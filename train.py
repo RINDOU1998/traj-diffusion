@@ -20,6 +20,7 @@ from diffusion_planner.train_epoch import train_epoch
 from datamodules import ArgoverseV1DataModule
 from datasets import ArgoverseV1Dataset
 from models.hivt import HiVT
+from traj_diffusion import Traj_Diffusion
 
 def boolean(v):
     if isinstance(v, bool):
@@ -188,10 +189,12 @@ def model_training(args):
         torch.distributed.barrier()
 
     # set up model
-    diffusion_planner = Diffusion_Planner(args)
-    diffusion_planner = diffusion_planner.to(rank if args.device == 'cuda' else args.device)
+    #diffusion_planner = Diffusion_Planner(args)
+    #diffusion_planner = diffusion_planner.to(rank if args.device == 'cuda' else args.device)
 
-    # TODO set up model Traj-dffusion 
+    #set up model Traj-dffusion and ddp 
+    diffusion_planner = Traj_Diffusion(args)
+    diffusion_planner = diffusion_planner.to(rank if args.device == 'cuda' else args.device)
 
 
 
