@@ -133,7 +133,20 @@ class Diffusion_Planner_Decoder(nn.Module):
         nn.init.constant_(self.decoder.dit.final_layer.proj[-1].bias, 0)
 
     def forward(self, encoder_outputs, inputs):
+        ## TODO convert TemporalData into valid inputs for diffusion decoder
+        #inputs: Dict
+        '''
+        {
+        ...
+        "ego_current_state": current ego states,            
+        "neighbor_agent_past": past and current neighbor states,  
 
+        [training-only] "sampled_trajectories": sampled current-future ego & neighbor states,        [B, P, 1 + V_future, 4]
+        [training-only] "diffusion_time": timestep of diffusion process $t \in [0, 1]$,              [B]
+        ...
+        }
+        '''
+    
         decoder_outputs = self.decoder(encoder_outputs, inputs)
         
         return decoder_outputs

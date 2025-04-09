@@ -70,9 +70,12 @@ class Decoder(nn.Module):
 
         """
         # Extract ego & neighbor current states
-        ego_current = inputs['ego_current_state'][:, None, :4]
-        neighbors_current = inputs["neighbor_agents_past"][:, :self._predicted_neighbor_num, -1, :4]
-        neighbor_current_mask = torch.sum(torch.ne(neighbors_current[..., :4], 0), dim=-1) == 0
+        ego_current = inputs['ego_current_state'][:, None, :4]  # [B, 1, 4]
+        # TODO predict all agents
+        
+        neighbors_current = inputs["neighbor_agents_past"][:, :self._predicted_neighbor_num, -1, :4] # [B, P, 4]
+        # mask for current neighbors which are not in the scene
+        neighbor_current_mask = torch.sum(torch.ne(neighbors_current[..., :4], 0), dim=-1) == 0 # [B, P]
 
         current_states = torch.cat([ego_current, neighbors_current], dim=1) # [B, P, 4]
 

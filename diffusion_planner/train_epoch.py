@@ -38,25 +38,25 @@ def train_epoch(data_loader, model, optimizer, args, ema, aug: StatePerturbation
             static_objects,
 
             '''
-
+            # NOTE use temporal data for input and convert temporal data into inputs format in decoder part
             # prepare data
-            inputs = {
-                'ego_current_state': batch[0].to(args.device),
+            # inputs = {
+            #     'ego_current_state': batch[0].to(args.device),
 
-                'neighbor_agents_past': batch[2].to(args.device),
+            #     'neighbor_agents_past': batch[2].to(args.device),
 
-                'lanes': batch[4].to(args.device),
-                'lanes_speed_limit': batch[5].to(args.device),
-                'lanes_has_speed_limit': batch[6].to(args.device),
+            #     'lanes': batch[4].to(args.device),
+            #     'lanes_speed_limit': batch[5].to(args.device),
+            #     'lanes_has_speed_limit': batch[6].to(args.device),
 
-                'route_lanes': batch[7].to(args.device),
-                'route_lanes_speed_limit': batch[8].to(args.device),
-                'route_lanes_has_speed_limit': batch[9].to(args.device),
+            #     'route_lanes': batch[7].to(args.device),
+            #     'route_lanes_speed_limit': batch[8].to(args.device),
+            #     'route_lanes_has_speed_limit': batch[9].to(args.device),
 
-                'static_objects': batch[10].to(args.device)
+            #     'static_objects': batch[10].to(args.device)
 
-            }
-
+            # }
+            inputs = 
             ego_future = batch[1].to(args.device)
             neighbors_future = batch[3].to(args.device)
             # Normalize to ego-centric
@@ -100,7 +100,7 @@ def train_epoch(data_loader, model, optimizer, args, ema, aug: StatePerturbation
                 loss,
                 args.diffusion_model_type
             )
-
+            ## TODO replace loss by reconstruction loss
             loss['loss'] = loss['neighbor_prediction_loss'] + args.alpha_planning_loss * loss['ego_planning_loss']
 
             total_loss = loss['loss'].item()
