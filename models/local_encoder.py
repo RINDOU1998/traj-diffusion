@@ -27,9 +27,9 @@ from torch_geometric.utils import subgraph
 
 from models import MultipleInputEmbedding
 from models import SingleInputEmbedding
-from utils import DistanceDropEdge
-from utils import TemporalData
-from utils import init_weights
+from diffusion_planner.utils.utils import DistanceDropEdge
+from diffusion_planner.utils.utils import TemporalData
+from diffusion_planner.utils.utils import init_weights
 
 
 class LocalEncoder(nn.Module):

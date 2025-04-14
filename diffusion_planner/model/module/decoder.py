@@ -9,7 +9,7 @@ from diffusion_planner.model.diffusion_utils.sde import SDE, VPSDE_linear
 from diffusion_planner.utils.normalizer import StateNormalizer
 from diffusion_planner.model.module.mixer import MixerBlock
 from diffusion_planner.model.module.dit import TimestepEmbedder, DiTBlock, FinalLayer
-
+from diffusion_planner.utils.diffusion_helper import sample_av_history, extract_av_embeddings
 
 class Decoder(nn.Module):
     def __init__(self, config):
@@ -37,25 +37,17 @@ class Decoder(nn.Module):
     def sde(self):
         return self._sde
     
-    def forward(self, encoder_outputs, inputs):
+    def forward(self, encoder_outputs, inputs ,eps: float = 1e-3 ):
         """
         Diffusion decoder process.
 
         Args:
-            encoder_outputs: Dict
-                {
-                    ...
-                    "encoding": agents, static objects and lanes context encoding
-                    ...
-                }
+            encoder_outputs:
+                cont(local_embed , global_embed) ,[num_modes ,num_nodes, 2*embed_dim] 
             inputs: Dict
                 {
                     ...
-                    "ego_current_state": current ego states,            
-                    "neighbor_agent_past": past and current neighbor states,  
-
-                    [training-only] "sampled_trajectories": sampled current-future ego & neighbor states,        [B, P, 1 + V_future, 4]
-                    [training-only] "diffusion_time": timestep of diffusion process $t \in [0, 1]$,              [B]
+                    temporal data
                     ...
                 }
 
@@ -69,62 +61,119 @@ class Decoder(nn.Module):
                 }
 
         """
-        # Extract ego & neighbor current states
-        ego_current = inputs['ego_current_state'][:, None, :4]  # [B, 1, 4]
-        # TODO predict all agents
+
+        # NOTE prepare av trajectory and diffusion time if training
+        x_his = sample_av_history(inputs) # [B, 1, 20, 2]
+        encoding = extract_av_embeddings(encoder_outputs, inputs) #[B, 2*D]
         
-        neighbors_current = inputs["neighbor_agents_past"][:, :self._predicted_neighbor_num, -1, :4] # [B, P, 4]
-        # mask for current neighbors which are not in the scene
-        neighbor_current_mask = torch.sum(torch.ne(neighbors_current[..., :4], 0), dim=-1) == 0 # [B, P]
-
-        current_states = torch.cat([ego_current, neighbors_current], dim=1) # [B, P, 4]
-
-        B, P, _ = current_states.shape
-        assert P == (1 + self._predicted_neighbor_num)
-
-        # Extract context encoding
-        ego_neighbor_encoding = encoder_outputs['encoding']
-        route_lanes = inputs['route_lanes']
-
+        B, P, _ = x_his.shape
         if self.training:
-            sampled_trajectories = inputs['sampled_trajectories'].reshape(B, P, -1) # [B, 1 + predicted_neighbor_num, (1 + V_future) * 4]
-            diffusion_time = inputs['diffusion_time']
-
+            t = torch.rand(B, device=x_his.device) * (1 - eps) + eps # [B,]
+            z = torch.randn_like(x_his, device=x_his.device)
+            mean, std = self._sde.marginal_prob(x_his, t)
+            sampled_trajectories = mean + std * z
+            sampled_trajectories = sampled_trajectories.reshape(B, P, -1) # [B, 1,20]
+            diffusion_time = t
             return {
                     "score": self.dit(
                         sampled_trajectories, 
                         diffusion_time,
-                        ego_neighbor_encoding,
-                        route_lanes,
-                        neighbor_current_mask
-                    ).reshape(B, P, -1, 4)
+                        encoding,
+                    ).reshape(B, P, -1, 2)
                 }
         else:
-            # [B, 1 + predicted_neighbor_num, (1 + V_future) * 4]
-            xT = torch.cat([current_states[:, :, None], torch.randn(B, P, self._future_len, 4).to(current_states.device) * 0.5], dim=2).reshape(B, P, -1)
+            # [B, 1 , 20 * 2]
+            xT = torch.cat([torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, 19:]], dim=2).reshape(B, P, -1)
 
             def initial_state_constraint(xt, t, step):
-                xt = xt.reshape(B, P, -1, 4)
-                xt[:, :, 0, :] = current_states
+                xt = xt.reshape(B, P, -1, 2)
                 return xt.reshape(B, P, -1)
             
             x0 = dpm_sampler(
                         self.dit,
                         xT,
                         other_model_params={
-                            "cross_c": ego_neighbor_encoding, 
-                            "route_lanes": route_lanes,
-                            "neighbor_current_mask": neighbor_current_mask                            
+                            "cross_c": encoding,                           
                         },
                         dpm_solver_params={
                             "correcting_xt_fn":initial_state_constraint,
                         }
                 )
-            x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 4))[:, :, 1:]
+            #TODO : state normalizer ?????/
+            x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 2))
 
             return {
                     "prediction": x0
                 }
+
+        
+
+        
+
+
+
+        # av trajectory Training : [B, 1, (1 + V_future) * 4]
+
+        # Extract ego & neighbor current states
+        #ego_current = inputs['ego_current_state'][:, None, :4]  # [B, 1, 4]
+        
+        
+        #neighbors_current = inputs["neighbor_agents_past"][:, :self._predicted_neighbor_num, -1, :4] # [B, P, 4]
+        # mask for current neighbors which are not in the scene
+        #neighbor_current_mask = torch.sum(torch.ne(neighbors_current[..., :4], 0), dim=-1) == 0 # [B, P]
+
+        #current_states = torch.cat([ego_current, neighbors_current], dim=1) # [B, P, 4]
+
+        #B, P, _ = current_states.shape
+        #assert P == (1 + self._predicted_neighbor_num)
+
+
+        
+        
+
+        # Extract context encoding
+        # ego_neighbor_encoding = encoder_outputs['encoding']
+        # route_lanes = inputs['route_lanes']
+
+        # if self.training:
+        #     sampled_trajectories = inputs['sampled_trajectories'].reshape(B, P, -1) # [B, 1 + predicted_neighbor_num, (1 + V_future) * 4]
+        #     diffusion_time = inputs['diffusion_time']
+
+        #     return {
+        #             "score": self.dit(
+        #                 sampled_trajectories, 
+        #                 diffusion_time,
+        #                 ego_neighbor_encoding,
+        #                 route_lanes,
+        #                 neighbor_current_mask
+        #             ).reshape(B, P, -1, 4)
+        #         }
+        # else:
+        #     # [B, 1 + predicted_neighbor_num, (1 + V_future) * 4]
+        #     xT = torch.cat([current_states[:, :, None], torch.randn(B, P, self._future_len, 4).to(current_states.device) * 0.5], dim=2).reshape(B, P, -1)
+
+        #     def initial_state_constraint(xt, t, step):
+        #         xt = xt.reshape(B, P, -1, 4)
+        #         xt[:, :, 0, :] = current_states
+        #         return xt.reshape(B, P, -1)
+            
+        #     x0 = dpm_sampler(
+        #                 self.dit,
+        #                 xT,
+        #                 other_model_params={
+        #                     "cross_c": ego_neighbor_encoding, 
+        #                     "route_lanes": route_lanes,
+        #                     "neighbor_current_mask": neighbor_current_mask                            
+        #                 },
+        #                 dpm_solver_params={
+        #                     "correcting_xt_fn":initial_state_constraint,
+        #                 }
+        #         )
+        #     x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 4))[:, :, 1:]
+
+        #     return {
+        #             "prediction": x0
+        #         }
 
         
 class RouteEncoder(nn.Module):

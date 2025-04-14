@@ -24,7 +24,7 @@ from metrics import MR
 from models import GlobalInteractor
 from models import LocalEncoder
 from models import MLPDecoder
-from utils import TemporalData
+from diffusion_planner.utils.utils import TemporalData
 
 
 class HiVT(pl.LightningModule):

@@ -24,7 +24,7 @@ from torch_geometric.data import Data
 from torch_geometric.data import Dataset
 from tqdm import tqdm
 
-from utils import TemporalData
+from diffusion_planner.utils.utils import TemporalData
 
 
 class ArgoverseV1Dataset(Dataset):

@@ -56,44 +56,51 @@ def train_epoch(data_loader, model, optimizer, args, ema, aug: StatePerturbation
             #     'static_objects': batch[10].to(args.device)
 
             # }
-            inputs = 
-            ego_future = batch[1].to(args.device)
-            neighbors_future = batch[3].to(args.device)
-            # Normalize to ego-centric
-            if aug is not None:
-                inputs, ego_future, neighbors_future = aug(inputs, ego_future, neighbors_future)
 
-            # heading to cos sin
-            ego_future = torch.cat(
-            [
-                ego_future[..., :2],
-                torch.stack(
-                    [ego_future[..., 2].cos(), ego_future[..., 2].sin()], dim=-1
-                ),
-            ],
-            dim=-1,
-            )
 
-            mask = torch.sum(torch.ne(neighbors_future[..., :3], 0), dim=-1) == 0
-            neighbors_future = torch.cat(
-            [
-                neighbors_future[..., :2],
-                torch.stack(
-                    [neighbors_future[..., 2].cos(), neighbors_future[..., 2].sin()], dim=-1
-                ),
-            ],
-            dim=-1,
-            )
-            neighbors_future[mask] = 0.
-            inputs = args.observation_normalizer(inputs)
-                  
+            ###################### input for diffusion#####################
+           
+            
+
+            ################################################################
+            # ego_future = batch[1].to(args.device)
+            # neighbors_future = batch[3].to(args.device)
+            # # Normalize to ego-centric
+            # if aug is not None:
+            #     inputs, ego_future, neighbors_future = aug(inputs, ego_future, neighbors_future)
+
+            # # heading to cos sin
+            # ego_future = torch.cat(
+            # [
+            #     ego_future[..., :2],
+            #     torch.stack(
+            #         [ego_future[..., 2].cos(), ego_future[..., 2].sin()], dim=-1
+            #     ),
+            # ],
+            # dim=-1,
+            # )
+
+            # mask = torch.sum(torch.ne(neighbors_future[..., :3], 0), dim=-1) == 0
+            # neighbors_future = torch.cat(
+            # [
+            #     neighbors_future[..., :2],
+            #     torch.stack(
+            #         [neighbors_future[..., 2].cos(), neighbors_future[..., 2].sin()], dim=-1
+            #     ),
+            # ],
+            # dim=-1,
+            # )
+            # neighbors_future[mask] = 0.
+            # inputs = args.observation_normalizer(inputs)
+            #######################################################################
             # call the mdoel
+            batch = batch.to(args.device)
             optimizer.zero_grad()
             loss = {}
 
             loss, _ = diffusion_loss_func(
                 model,
-                inputs,
+                batch,
                 ddp.get_model(model, args.ddp).sde.marginal_prob,
                 (ego_future, neighbors_future, mask),
                 args.state_normalizer,

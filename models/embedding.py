@@ -16,7 +16,7 @@ from typing import List, Optional
 import torch
 import torch.nn as nn
 
-from utils import init_weights
+from diffusion_planner.utils.utils import init_weights
 
 
 class SingleInputEmbedding(nn.Module):

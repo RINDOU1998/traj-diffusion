@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils import init_weights
+from diffusion_planner.utils.utils import init_weights
 
 
 class GRUDecoder(nn.Module):

@@ -24,8 +24,8 @@ from torch_geometric.utils import subgraph
 
 from models import MultipleInputEmbedding
 from models import SingleInputEmbedding
-from utils import TemporalData
-from utils import init_weights
+from diffusion_planner.utils.utils import TemporalData
+from diffusion_planner.utils.utils import init_weights
 
 
 class GlobalInteractor(nn.Module):
@@ -52,7 +52,8 @@ class GlobalInteractor(nn.Module):
             [GlobalInteractorLayer(embed_dim=embed_dim, num_heads=num_heads, dropout=dropout)
              for _ in range(num_layers)])
         self.norm = nn.LayerNorm(embed_dim)
-        self.multihead_proj = nn.Linear(embed_dim, num_modes * embed_dim)
+        #NOTE remove proj_head
+        #self.multihead_proj = nn.Linear(embed_dim, num_modes * embed_dim)
         self.apply(init_weights)
 
     def forward(self,
@@ -73,8 +74,10 @@ class GlobalInteractor(nn.Module):
         for layer in self.global_interactor_layers:
             x = layer(x, edge_index, rel_embed)
         x = self.norm(x)  # [N, D]
-        x = self.multihead_proj(x).view(-1, self.num_modes, self.embed_dim)  # [N, F, D]
-        x = x.transpose(0, 1)  # [F, N, D]
+
+        # NOTE instead projecting to num_modes heads, we use embedding [N,D] 
+        #x = self.multihead_proj(x).view(-1, self.num_modes, self.embed_dim)  # [N, F, D]
+        #x = x.transpose(0, 1)  # [F, N, D]
         return x
 
 

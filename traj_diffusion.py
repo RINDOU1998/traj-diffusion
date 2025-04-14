@@ -6,7 +6,7 @@ import torch.nn as nn
 from diffusion_planner.model.module.decoder import Decoder
 from models import GlobalInteractor
 from models import LocalEncoder
-from utils import TemporalData
+from diffusion_planner.utils.utils import TemporalData
 
 class Traj_Diffusion(nn.Module):
     def __init__(self, config):
@@ -92,7 +92,7 @@ class HiVT_Encoder(nn.Module):
 
         local_embed = self.local_encoder(data=data)
         global_embed = self.global_interactor(data=data, local_embed=local_embed)
-        encoder_outputs = torch.cat((local_embed.expand(self.num_modes, *local_embed.shape),global_embed), dim=-1)
+        encoder_outputs = torch.cat((local_embed,global_embed), dim=-1) # [N,2*embed_dim]
         return encoder_outputs
     
 
