@@ -24,7 +24,8 @@ class Decoder(nn.Module):
             sde=self._sde, 
             route_encoder = RouteEncoder(config.route_num, config.lane_len, drop_path_rate=config.encoder_drop_path_rate, hidden_dim=config.hidden_dim),
             depth=config.decoder_depth, 
-            output_dim= (config.future_len + 1) * 4, # x, y, cos, sin
+            #output_dim= (config.future_len + 1) * 4, # x, y, cos, sin
+            output_dim= (20) * 2, # x, y in L comp
             hidden_dim=config.hidden_dim, 
             heads=config.num_heads, 
             dropout=dpr,

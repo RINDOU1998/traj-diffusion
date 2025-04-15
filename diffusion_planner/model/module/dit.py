@@ -101,6 +101,7 @@ class DiTBlock(nn.Module):
         return x
     
     
+    
 class FinalLayer(nn.Module):
     """
     The final layer of DiT.
