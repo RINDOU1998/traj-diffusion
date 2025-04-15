@@ -64,6 +64,7 @@ class TimestepEmbedder(nn.Module):
 
 
 class DiTBlock(nn.Module):
+    # TODO remove first adan self attn layer and use cross attn from cross_c only
     """
     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning for ego and Cross-Attention.
     """
