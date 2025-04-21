@@ -88,16 +88,22 @@ class DiTBlock(nn.Module):
 
     def forward(self, x, cross_c, y, attn_mask):
 
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(y).chunk(6, dim=1)
+        # shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(y).chunk(6, dim=1)
+        # # adaln self attn
+        # modulated_x = modulate(self.norm1(x), shift_msa, scale_msa)
+        # x = x + gate_msa.unsqueeze(1) * self.attn(modulated_x, modulated_x, modulated_x, key_padding_mask=attn_mask)[0]
+        
+        # modulated_x = modulate(self.norm2(x), shift_mlp, scale_mlp)
+        # x = x + gate_mlp.unsqueeze(1) * self.mlp1(modulated_x)
 
-        modulated_x = modulate(self.norm1(x), shift_msa, scale_msa)
-        x = x + gate_msa.unsqueeze(1) * self.attn(modulated_x, modulated_x, modulated_x, key_padding_mask=attn_mask)[0]
 
-        modulated_x = modulate(self.norm2(x), shift_mlp, scale_mlp)
-        x = x + gate_mlp.unsqueeze(1) * self.mlp1(modulated_x)
-
+        # cross attn with cross  
+        # cross_c = [B,2*D]
+        # x = [ B,1,2*20]
         x = self.cross_attn(self.norm3(x), cross_c, cross_c)[0]
         x = self.mlp2(self.norm4(x))
+        
+        # TODO: add muti-head output in nums_mode
 
         return x
     

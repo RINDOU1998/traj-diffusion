@@ -65,8 +65,12 @@ class Decoder(nn.Module):
 
         # NOTE prepare av trajectory and diffusion time if training
         x_his = sample_av_history(inputs) # [B, 1, 20, 2]
+        
+        # TODO instead of extract_av_embeddings, add class embedding into encoder_outputs and use all embedding and preproj x into same embedding space as encoder_outpus
         encoding = extract_av_embeddings(encoder_outputs, inputs) #[B, 2*D]
         
+
+
         B, P, _ = x_his.shape
         if self.training:
             t = torch.rand(B, device=x_his.device) * (1 - eps) + eps # [B,]
@@ -100,8 +104,8 @@ class Decoder(nn.Module):
                             "correcting_xt_fn":initial_state_constraint,
                         }
                 )
-            #TODO : state normalizer ?????/
-            x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 2))
+            #NOTE： remove state normalizer 
+            # x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 2))
 
             return {
                     "prediction": x0
@@ -252,14 +256,16 @@ class DiT(nn.Module):
         B, P, _ = x.shape
         
         x = self.preproj(x)
-
+        # add av and route 
         x_embedding = torch.cat([self.agent_embedding.weight[0][None, :], self.agent_embedding.weight[1][None, :].expand(P - 1, -1)], dim=0)  # (P, D)
         x_embedding = x_embedding[None, :, :].expand(B, -1, -1) # (B, P, D)
         x = x + x_embedding     
 
-        route_encoding = self.route_encoder(route_lanes)
-        y = route_encoding
-        y = y + self.t_embedder(t)      
+        # add embedding to context for 
+
+        # route_encoding = self.route_encoder(route_lanes)
+        # y = route_encoding
+        # y = y + self.t_embedder(t)      
 
         attn_mask = torch.zeros((B, P), dtype=torch.bool, device=x.device)
         attn_mask[:, 1:] = neighbor_current_mask

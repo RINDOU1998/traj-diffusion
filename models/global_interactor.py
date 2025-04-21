@@ -76,7 +76,7 @@ class GlobalInteractor(nn.Module):
         x = self.norm(x)  # [N, D]
 
         # NOTE instead projecting to num_modes heads, we use embedding [N,D] 
-        #x = self.multihead_proj(x).view(-1, self.num_modes, self.embed_dim)  # [N, F, D]
+        #x = self.multihead_proj(x).view(-1, self.num_modes, self.embed_dim)  # [N, F, D]   [B,D]
         #x = x.transpose(0, 1)  # [F, N, D]
         return x
 

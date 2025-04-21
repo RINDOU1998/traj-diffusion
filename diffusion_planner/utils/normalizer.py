@@ -11,7 +11,7 @@ class StateNormalizer:
     def from_json(cls, args):
         data = openjson(args.normalization_file_path)
         mean = [[data["ego"]["mean"]]] + [[data["neighbor"]["mean"]]] * args.predicted_neighbor_num
-        std = [[data["ego"]["std"]]] + [[data["neighbor"]["std"]]] * args.predicted_neighbor_num
+        std = [[data["ego"]["std"]]] + [[data["neighbor"]["std"]]] * args.predicted_neighbor_num 
         return cls(mean, std)
     
     def __call__(self, data):
