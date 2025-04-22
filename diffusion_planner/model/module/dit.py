@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 from timm.models.layers import Mlp
+from torch_geometric.utils import to_dense_batch
 
 def modulate(x, shift, scale, only_first=False):
     if only_first:
@@ -68,7 +69,7 @@ class DiTBlock(nn.Module):
     """
     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning for ego and Cross-Attention.
     """
-    def __init__(self, dim=192, heads=6, dropout=0.1, mlp_ratio=4.0):
+    def __init__(self, dim=256, heads=6, dropout=0.1, mlp_ratio=4.0):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
         self.attn = nn.MultiheadAttention(dim, heads, dropout, batch_first=True)
@@ -86,7 +87,7 @@ class DiTBlock(nn.Module):
 
         self.mlp2 = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
 
-    def forward(self, x, cross_c, y, attn_mask):
+    def forward(self, x, cross_c, t_embed, batch_vec):
 
         # shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(y).chunk(6, dim=1)
         # # adaln self attn
@@ -97,15 +98,22 @@ class DiTBlock(nn.Module):
         # x = x + gate_mlp.unsqueeze(1) * self.mlp1(modulated_x)
 
 
+
         # cross attn with cross  
         # cross_c = [B,2*D]
         # x = [ B,1,2*20]
-        x = self.cross_attn(self.norm3(x), cross_c, cross_c)[0]
-        x = self.mlp2(self.norm4(x))
-        
-        # TODO: add muti-head output in nums_mode
+       
 
-        return x
+        context, mask = to_dense_batch(cross_c, batch_vec)  # [B, N_max, D], [B, N_max]
+
+        x, _ = self.cross_attn(
+            query=self.norm1(x),                # [B, P, D]
+            key=context, value=context, # [B, N_max, D]
+            key_padding_mask=~mask      # [B, N_max]
+        )
+        #x = self.cross_attn(self.norm3(x), cross_c, cross_c)[0]
+        x = self.mlp2(self.norm4(x))  
+        return x 
     
     
     
@@ -129,11 +137,13 @@ class FinalLayer(nn.Module):
             nn.Linear(hidden_size, 2 * hidden_size, bias=True)
         )
 
-    def forward(self, x, y):
+    def forward(self, x):
         B, P, _ = x.shape
-        
-        shift, scale = self.adaLN_modulation(y).chunk(2, dim=1)
-        x = modulate(self.norm_final(x), shift, scale)
+        # NOTE remove  y as adaln guidance
+        # shift, scale = self.adaLN_modulation(y).chunk(2, dim=1)
+        # x = modulate(self.norm_final(x), shift, scale)
+
+        x = self.norm_final(x)
         x = self.proj(x)
         return x
     

@@ -69,26 +69,30 @@ def diffusion_loss_func(
     #     "sampled_trajectories": xT,
     #     "diffusion_time": t,
     # }
-
-    _, decoder_output = model(inputs) # [B, P, 1 + T, 4]
-    # TODO continue after decoder complete
-
-    score = decoder_output["score"][:, :, 1:, :] # [B, P, T, 4]
-
+    # NOTE calculate the loss from score from sampled history trajectory,complete 20 frames 
+    _, decoder_output = model(inputs) # [B, 1 ,T, 2]
+    
+   
+    # score = decoder_output["score"][:, :, 1:, :] # [B, P, T, 2]
+    score = decoder_output["score"][:, :, :, :] # [B, P, T, 2]
+    std = decoder_output["std"] 
+    z = decoder_output["z"] 
+    gt = decoder_output["gt"] # [B, P, T, 2]
     if model_type == "score":
         dpm_loss = torch.sum((score * std + z)**2, dim=-1)
     elif model_type == "x_start":
-        dpm_loss = torch.sum((score - all_gt[:, :, 1:, :])**2, dim=-1)
+        dpm_loss = torch.sum((score - gt)**2, dim=-1)
     
-    masked_prediction_loss = dpm_loss[:, 1:, :][neighbors_future_valid]
+    # masked_prediction_loss = dpm_loss[:, 1:, :][neighbors_future_valid]
 
-    if masked_prediction_loss.numel() > 0:
-        loss["neighbor_prediction_loss"] = masked_prediction_loss.mean()
-    else:
-        loss["neighbor_prediction_loss"] = torch.tensor(0.0, device=masked_prediction_loss.device)
+    # if masked_prediction_loss.numel() > 0:
+    #     loss["neighbor_prediction_loss"] = masked_prediction_loss.mean()
+    # else:
+    #     loss["neighbor_prediction_loss"] = torch.tensor(0.0, device=masked_prediction_loss.device)
 
-    loss["ego_planning_loss"] = dpm_loss[:, 0, :].mean()
+    # loss["ego_planning_loss"] = dpm_loss[:, 0, :].mean()
 
+    loss["reconstruction_loss"] = dpm_loss.mean()
     assert not torch.isnan(dpm_loss).sum(), f"loss cannot be nan, z={z}"
 
     return loss, decoder_output

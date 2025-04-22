@@ -3,8 +3,9 @@ import torch
 import argparse
 from torch import optim
 from timm.utils import ModelEma
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import  DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch_geometric.data import DataLoader
 
 from diffusion_planner.model.diffusion_planner import Diffusion_Planner
 
@@ -179,7 +180,7 @@ def model_training(args):
     train_set = ArgoverseV1Dataset(args.root, 'train', None, args.local_radius)
     train_sampler = DistributedSampler(train_set, num_replicas=ddp.get_world_size(), rank=global_rank, shuffle=True)
     train_loader = DataLoader(train_set, sampler=train_sampler, batch_size=batch_size//ddp.get_world_size(), num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=True)
-
+    
 
 
     if global_rank == 0:

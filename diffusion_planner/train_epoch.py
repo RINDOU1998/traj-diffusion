@@ -101,20 +101,21 @@ def train_epoch(data_loader, model, optimizer, args, ema, aug: StatePerturbation
             loss, _ = diffusion_loss_func(
                 model,
                 batch,
-                ddp.get_model(model, args.ddp).sde.marginal_prob,
-                (ego_future, neighbors_future, mask),
+                #ddp.get_model(model, args.ddp).sde.marginal_prob,
+                #(ego_future, neighbors_future, mask),
                 args.state_normalizer,
                 loss,
                 args.diffusion_model_type
             )
-            ## TODO replace loss by reconstruction loss
-            loss['loss'] = loss['neighbor_prediction_loss'] + args.alpha_planning_loss * loss['ego_planning_loss']
-
+           
+            #loss['loss'] = loss['neighbor_prediction_loss'] + args.alpha_planning_loss * loss['ego_planning_loss']
+            loss['loss'] = loss["reconstruction_loss"]
+            ## NOTE replace loss by reconstruction loss
             total_loss = loss['loss'].item()
 
             # loss backward
             loss['loss'].backward()
-
+            # clip gradient to prevent gradient explosion
             nn.utils.clip_grad_norm_(model.parameters(), 5)
             optimizer.step()
 

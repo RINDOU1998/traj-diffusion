@@ -9,7 +9,7 @@ from diffusion_planner.model.diffusion_utils.sde import SDE, VPSDE_linear
 from diffusion_planner.utils.normalizer import StateNormalizer
 from diffusion_planner.model.module.mixer import MixerBlock
 from diffusion_planner.model.module.dit import TimestepEmbedder, DiTBlock, FinalLayer
-from diffusion_planner.utils.diffusion_helper import sample_av_history, extract_av_embeddings
+from diffusion_planner.utils.diffusion_helper import sample_av_history, extract_av_embeddings, extract_agent_type
 
 class Decoder(nn.Module):
     def __init__(self, config):
@@ -32,7 +32,8 @@ class Decoder(nn.Module):
             model_type=config.diffusion_model_type
         )
         
-        self._state_normalizer: StateNormalizer = config.state_normalizer
+        #self._state_normalizer: StateNormalizer = config.state_normalizer
+        self.agent_type_embed = nn.Embedding(2, config.embed_dim * 2)
         
     @property
     def sde(self):
@@ -65,9 +66,14 @@ class Decoder(nn.Module):
 
         # NOTE prepare av trajectory and diffusion time if training
         x_his = sample_av_history(inputs) # [B, 1, 20, 2]
+
+        B = inputs.batch.max().item() + 1
+        # NOTE instead of extract_av_embeddings, add class embedding into encoder_outputs and use all embedding and preproj x into same embedding space as encoder_outpus
         
-        # TODO instead of extract_av_embeddings, add class embedding into encoder_outputs and use all embedding and preproj x into same embedding space as encoder_outpus
-        encoding = extract_av_embeddings(encoder_outputs, inputs) #[B, 2*D]
+        batch_vec = inputs.batch
+        agent_type = extract_agent_type(batch_vec, inputs.av_index, B)# [B*N] 0 for av ,  1 for others
+        type_embedding = self.agent_type_embed(agent_type)                 # [B*N, 2*D]
+        encoding = encoder_outputs + type_embedding                        # [B*N, 2*D]
         
 
 
@@ -84,7 +90,12 @@ class Decoder(nn.Module):
                         sampled_trajectories, 
                         diffusion_time,
                         encoding,
-                    ).reshape(B, P, -1, 2)
+                        batch_vec
+
+                    ).reshape(B, P, -1, 2),
+                    "std" : std,
+                    "z" : z,
+                    "gt" : x_his
                 }
         else:
             # [B, 1 , 20 * 2]
@@ -94,11 +105,17 @@ class Decoder(nn.Module):
                 xt = xt.reshape(B, P, -1, 2)
                 return xt.reshape(B, P, -1)
             
+
+
+            # TODO: modify sampler 
+            # x, t, cross_c, batch_vec
             x0 = dpm_sampler(
                         self.dit,
                         xT,
                         other_model_params={
-                            "cross_c": encoding,                           
+                            "t" : diffusion_time,
+                            "cross_c": encoding, 
+                            "batch_vec": batch_vec,                                 
                         },
                         dpm_solver_params={
                             "correcting_xt_fn":initial_state_constraint,
@@ -228,7 +245,7 @@ class RouteEncoder(nn.Module):
 
 
 class DiT(nn.Module):
-    def __init__(self, sde: SDE, route_encoder: nn.Module, depth, output_dim, hidden_dim=192, heads=6, dropout=0.1, mlp_ratio=4.0, model_type="x_start"):
+    def __init__(self, sde: SDE, route_encoder: nn.Module, depth, output_dim, hidden_dim=256, heads=6, dropout=0.1, mlp_ratio=4.0, model_type="x_start"):
         super().__init__()
         
         assert model_type in ["score", "x_start"], f"Unknown model type: {model_type}"
@@ -236,7 +253,7 @@ class DiT(nn.Module):
         self.route_encoder = route_encoder
         self.agent_embedding = nn.Embedding(2, hidden_dim)
         self.preproj = Mlp(in_features=output_dim, hidden_features=512, out_features=hidden_dim, act_layer=nn.GELU, drop=0.)
-        self.t_embedder = TimestepEmbedder(hidden_dim)
+        self.t_embedder = TimestepEmbedder(hidden_dim) # add t_embedding into x_t instead of context
         self.blocks = nn.ModuleList([DiTBlock(hidden_dim, heads, dropout, mlp_ratio) for i in range(depth)])
         self.final_layer = FinalLayer(hidden_dim, output_dim)
         self._sde = sde
@@ -245,8 +262,14 @@ class DiT(nn.Module):
     @property
     def model_type(self):
         return self._model_type
+    
 
-    def forward(self, x, t, cross_c, route_lanes, neighbor_current_mask):
+    #  sampled_trajectories, 
+    # diffusion_time,
+    # encoding,
+    # batch_vec
+
+    def forward(self, x, t, cross_c, batch_vec):
         """
         Forward pass of DiT.
         x: (B, P, output_dim)   -> Embedded out of DiT
@@ -256,24 +279,32 @@ class DiT(nn.Module):
         B, P, _ = x.shape
         
         x = self.preproj(x)
-        # add av and route 
-        x_embedding = torch.cat([self.agent_embedding.weight[0][None, :], self.agent_embedding.weight[1][None, :].expand(P - 1, -1)], dim=0)  # (P, D)
-        x_embedding = x_embedding[None, :, :].expand(B, -1, -1) # (B, P, D)
-        x = x + x_embedding     
+        # NOTE add t_embedder
+        t_embed = self.t_embedder(t)           # [B, D]
+        x = x + t_embed.unsqueeze(1)           # Inject time info [B, P, D]
+        
 
+        # add av and route 
+        # x_embedding = torch.cat([self.agent_embedding.weight[0][None, :], self.agent_embedding.weight[1][None, :].expand(P - 1, -1)], dim=0)  # (P, D)
+        # x_embedding = x_embedding[None, :, :].expand(B, -1, -1) # (B, P, D)
+        # x = x + x_embedding     
+        
+
+        
         # add embedding to context for 
 
         # route_encoding = self.route_encoder(route_lanes)
         # y = route_encoding
         # y = y + self.t_embedder(t)      
 
-        attn_mask = torch.zeros((B, P), dtype=torch.bool, device=x.device)
-        attn_mask[:, 1:] = neighbor_current_mask
-        
+        # attn_mask = torch.zeros((B, P), dtype=torch.bool, device=x.device)
+        # attn_mask[:, 1:] = neighbor_current_mask
+        batch_vec = batch_vec
+
         for block in self.blocks:
-            x = block(x, cross_c, y, attn_mask)  
+            x = block(x, cross_c,t_embed,batch_vec)  
             
-        x = self.final_layer(x, y)
+        x = self.final_layer(x)
         
         if self._model_type == "score":
             return x / (self.marginal_prob_std(t)[:, None, None] + 1e-6)
