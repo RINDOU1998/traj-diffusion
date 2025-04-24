@@ -23,6 +23,8 @@ from datasets import ArgoverseV1Dataset
 from models.hivt import HiVT
 from traj_diffusion import Traj_Diffusion
 
+
+# test commit
 def boolean(v):
     if isinstance(v, bool):
         return v
