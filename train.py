@@ -5,7 +5,7 @@ from torch import optim
 from timm.utils import ModelEma
 from torch.utils.data import  DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch_geometric.data import DataLoader
+from torch_geometric.loader import DataLoader
 
 from diffusion_planner.model.diffusion_planner import Diffusion_Planner
 
@@ -13,19 +13,17 @@ from diffusion_planner.utils.train_utils import set_seed, save_model, resume_mod
 from diffusion_planner.utils.normalizer import ObservationNormalizer, StateNormalizer
 from diffusion_planner.utils.lr_schedule import CosineAnnealingWarmUpRestarts
 from diffusion_planner.utils.tb_log import TensorBoardLogger as Logger
-from diffusion_planner.utils.data_augmentation import StatePerturbation
-from diffusion_planner.utils.dataset import DiffusionPlannerData
+#from diffusion_planner.utils.data_augmentation import StatePerturbation
+#from diffusion_planner.utils.dataset import DiffusionPlannerData
 from diffusion_planner.utils import ddp
-
 from diffusion_planner.train_epoch import train_epoch
-from datamodules import ArgoverseV1DataModule
+#from datamodules import ArgoverseV1DataModule
 from datasets import ArgoverseV1Dataset
-from models.hivt import HiVT
 from traj_diffusion import Traj_Diffusion
 
 
-# test commit
-def boolean(v):
+# TODO modify the dataset module for new torch version
+def boolean(v): 
     if isinstance(v, bool):
         return v
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -34,6 +32,27 @@ def boolean(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+    
+def add_model_specific_args(parent_parser):
+    parser = parent_parser.add_argument_group('HiVT')
+    parser.add_argument('--historical_steps', type=int, default=20)
+    parser.add_argument('--future_steps', type=int, default=30)
+    parser.add_argument('--num_modes', type=int, default=6)
+    parser.add_argument('--rotate', type=bool, default=True)
+    parser.add_argument('--node_dim', type=int, default=2)
+    parser.add_argument('--edge_dim', type=int, default=2)
+    parser.add_argument('--embed_dim', type=int, required=True)
+    parser.add_argument('--num_heads', type=int, default=8)
+    parser.add_argument('--dropout', type=float, default=0.1)
+    parser.add_argument('--num_temporal_layers', type=int, default=4)
+    parser.add_argument('--num_global_layers', type=int, default=3)
+    parser.add_argument('--local_radius', type=float, default=50)
+    parser.add_argument('--parallel', type=bool, default=False)
+    parser.add_argument('--lr', type=float, default=5e-4)
+    parser.add_argument('--weight_decay', type=float, default=1e-4)
+    parser.add_argument('--T_max', type=int, default=64)
+    return parent_parser
+
 
 def get_args():
     # HiVT args
@@ -49,7 +68,7 @@ def get_args():
     parser.add_argument('--max_epochs', type=int, default=64)
     parser.add_argument('--monitor', type=str, default='val_minFDE', choices=['val_minADE', 'val_minFDE', 'val_minMR'])
     parser.add_argument('--save_top_k', type=int, default=5)
-    parser = HiVT.add_model_specific_args(parser)
+    parser = add_model_specific_args(parser)
 
 
     # Arguments
@@ -91,7 +110,7 @@ def get_args():
     parser.add_argument('--seed', type=int, help='fix random seed', default=3407)
     parser.add_argument('--train_epochs', type=int, help='epochs of training', default=500)
     parser.add_argument('--save_utd', type=int, help='save frequency', default=20)
-    parser.add_argument('--batch_size', type=int, help='batch size (default: 2048)', default=2048)
+    parser.add_argument('--batch_size', type=int, help='batch size (default: 32)', default=32)
     parser.add_argument('--learning_rate', type=float, help='learning rate (default: 5e-4)', default=5e-4)
     parser.add_argument('--warm_up_epoch', type=int, help='number of warm up', default=5)
     parser.add_argument('--encoder_drop_path_rate', type=float, help='encoder drop out rate', default=0.1)
@@ -178,7 +197,8 @@ def model_training(args):
     # train_loader = DataLoader(train_set, sampler=train_sampler, batch_size=batch_size//ddp.get_world_size(), num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=True)
     
     # create train set , train_sampler, and train_loader from  ArgoverseV1Dataset  and ArgoverseV1DataModule
-    aug = StatePerturbation(augment_prob=args.augment_prob, device=args.device) if args.use_data_augment else None
+    # aug = StatePerturbation(augment_prob=args.augment_prob, device=args.device) if args.use_data_augment else None
+    aug = None
     train_set = ArgoverseV1Dataset(args.root, 'train', None, args.local_radius)
     train_sampler = DistributedSampler(train_set, num_replicas=ddp.get_world_size(), rank=global_rank, shuffle=True)
     train_loader = DataLoader(train_set, sampler=train_sampler, batch_size=batch_size//ddp.get_world_size(), num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=True)

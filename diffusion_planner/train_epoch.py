@@ -2,13 +2,13 @@ from tqdm import tqdm
 import torch
 from torch import nn
 
-from diffusion_planner.utils.data_augmentation import StatePerturbation   
+#from diffusion_planner.utils.data_augmentation import StatePerturbation   
 from diffusion_planner.utils.train_utils import get_epoch_mean_loss
 from diffusion_planner.utils import ddp
 from diffusion_planner.loss import diffusion_loss_func
 
 
-def train_epoch(data_loader, model, optimizer, args, ema, aug: StatePerturbation=None):
+def train_epoch(data_loader, model, optimizer, args, ema, aug=None):
     epoch_loss = []
 
     model.train()

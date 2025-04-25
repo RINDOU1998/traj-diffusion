@@ -167,9 +167,9 @@ class HiVT(pl.LightningModule):
         assert len(param_dict.keys() - union_params) == 0
 
         optim_groups = [
-            {"params": [param_dict[param_name] for param_name in sorted(list(decay))],
+            {"params": [param_Dict[param_name] for param_name in sorted(list(decay))],
              "weight_decay": self.weight_decay},
-            {"params": [param_dict[param_name] for param_name in sorted(list(no_decay))],
+            {"params": [param_Dict[param_name] for param_name in sorted(list(no_decay))],
              "weight_decay": 0.0},
         ]
 

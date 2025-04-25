@@ -795,7 +795,7 @@ class DPM_Solver:
 
     def multistep_dpm_solver_second_update(self, x, model_prev_list, t_prev_list, t, solver_type="dpmsolver"):
         """
-        Multistep solver DPM-Solver-2 from time `t_prev_list[-1]` to time `t`.
+        Multistep solver DPM-Solver-2 from time `t_prev_List[-1]` to time `t`.
 
         Args:
             x: A pytorch tensor. The initial value at time `s`.
@@ -810,8 +810,8 @@ class DPM_Solver:
         if solver_type not in ['dpmsolver', 'taylor']:
             raise ValueError("'solver_type' must be either 'dpmsolver' or 'taylor', got {}".format(solver_type))
         ns = self.noise_schedule
-        model_prev_1, model_prev_0 = model_prev_list[-2], model_prev_list[-1]
-        t_prev_1, t_prev_0 = t_prev_list[-2], t_prev_list[-1]
+        model_prev_1, model_prev_0 = model_prev_List[-2], model_prev_List[-1]
+        t_prev_1, t_prev_0 = t_prev_List[-2], t_prev_List[-1]
         lambda_prev_1, lambda_prev_0, lambda_t = ns.marginal_lambda(t_prev_1), ns.marginal_lambda(t_prev_0), ns.marginal_lambda(t)
         log_alpha_prev_0, log_alpha_t = ns.marginal_log_mean_coeff(t_prev_0), ns.marginal_log_mean_coeff(t)
         sigma_prev_0, sigma_t = ns.marginal_std(t_prev_0), ns.marginal_std(t)
@@ -853,7 +853,7 @@ class DPM_Solver:
 
     def multistep_dpm_solver_third_update(self, x, model_prev_list, t_prev_list, t, solver_type='dpmsolver'):
         """
-        Multistep solver DPM-Solver-3 from time `t_prev_list[-1]` to time `t`.
+        Multistep solver DPM-Solver-3 from time `t_prev_List[-1]` to time `t`.
 
         Args:
             x: A pytorch tensor. The initial value at time `s`.
@@ -931,7 +931,7 @@ class DPM_Solver:
 
     def multistep_dpm_solver_update(self, x, model_prev_list, t_prev_list, t, order, solver_type='dpmsolver'):
         """
-        Multistep DPM-Solver with the order `order` from time `t_prev_list[-1]` to time `t`.
+        Multistep DPM-Solver with the order `order` from time `t_prev_List[-1]` to time `t`.
 
         Args:
             x: A pytorch tensor. The initial value at time `s`.
@@ -945,7 +945,7 @@ class DPM_Solver:
             x_t: A pytorch tensor. The approximated solution at time `t`.
         """
         if order == 1:
-            return self.dpm_solver_first_update(x, t_prev_list[-1], t, model_s=model_prev_list[-1])
+            return self.dpm_solver_first_update(x, t_prev_List[-1], t, model_s=model_prev_List[-1])
         elif order == 2:
             return self.multistep_dpm_solver_second_update(x, model_prev_list, t_prev_list, t, solver_type=solver_type)
         elif order == 3:
@@ -1205,12 +1205,12 @@ class DPM_Solver:
                     if return_intermediate:
                         intermediates.append(x)
                     for i in range(order - 1):
-                        t_prev_list[i] = t_prev_list[i + 1]
-                        model_prev_list[i] = model_prev_list[i + 1]
-                    t_prev_list[-1] = t
+                        t_prev_List[i] = t_prev_List[i + 1]
+                        model_prev_List[i] = model_prev_List[i + 1]
+                    t_prev_List[-1] = t
                     # We do not need to evaluate the final model value.
                     if step < steps:
-                        model_prev_list[-1] = self.model_fn(x, t)
+                        model_prev_List[-1] = self.model_fn(x, t)
             elif method in ['singlestep', 'singlestep_fixed']:
                 if method == 'singlestep':
                     timesteps_outer, orders = self.get_orders_and_timesteps_for_singlestep_solver(steps=steps, order=order, skip_type=skip_type, t_T=t_T, t_0=t_0, device=device)

@@ -83,10 +83,10 @@ class DiffusionPlanner(AbstractPlanner):
             state_dict:Dict = torch.load(self._ckpt_path)
             
             if self._ema_enabled:
-                state_dict = state_dict['ema_state_dict']
+                state_dict = state_Dict['ema_state_dict']
             else:
                 if "model" in state_dict.keys():
-                    state_dict = state_dict['model']
+                    state_dict = state_Dict['model']
             # use for ddp
             model_state_dict = {k[len("module."):]: v for k, v in state_dict.items() if k.startswith("module.")}
             self._planner.load_state_dict(model_state_dict)

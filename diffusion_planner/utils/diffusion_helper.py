@@ -1,6 +1,7 @@
 import torch
 from torch import Tensor
 from torch_geometric.data import Data
+from typing import List, Dict, Tuple, Any
 
 
 def sample_av_history(batch: Data, T: int = 20) -> Tensor:
@@ -70,7 +71,7 @@ def extract_av_embeddings(encoder_outputs: Tensor, batch: Data) -> Tensor:
     return encoder_outputs[av_global_indices]      # [B, D]
 
 
-def extract_agent_type(batch_vec: Tensor, av_indices: list[int], num_graphs: int) -> Tensor:
+def extract_agent_type(batch_vec: Tensor, av_indices: List[int], num_graphs: int) -> Tensor:
     """
     Create an agent type tensor (0 for AV, 1 for other agents).
 

@@ -181,8 +181,8 @@ def get_current_roadblock_candidates(
         point=ego_pose.point, radius=1.0, layers=layers
     )
     roadblock_candidates = (
-        roadblock_dict[SemanticMapLayer.ROADBLOCK]
-        + roadblock_dict[SemanticMapLayer.ROADBLOCK_CONNECTOR]
+        roadblock_Dict[SemanticMapLayer.ROADBLOCK]
+        + roadblock_Dict[SemanticMapLayer.ROADBLOCK_CONNECTOR]
     )
 
     if not roadblock_candidates:
@@ -277,7 +277,7 @@ def route_roadblock_correction(
         block = block or map_api.get_map_object(
             id_, SemanticMapLayer.ROADBLOCK_CONNECTOR
         )
-        route_roadblock_dict[id_] = block
+        route_roadblock_Dict[id_] = block
 
     starting_block, starting_block_candidates = get_current_roadblock_candidates(
         ego_state, map_api, route_roadblock_dict
