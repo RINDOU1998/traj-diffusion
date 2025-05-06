@@ -20,8 +20,8 @@ def sample_av_history(batch: Data, T: int = 20) -> Tensor:
     av_indices = batch.av_index    # [B]
 
     B = batch_vec.max().item() + 1
-    print("B :", B)
-    print("x.shape :", x.shape)
+    # print("B :", B)
+    # print("x.shape :", x.shape)
 
     av_trajs = x[av_indices]       # [B, T, 2]
     av_trajs = av_trajs.unsqueeze(1)  # [B, 1, T, 2]
@@ -29,7 +29,7 @@ def sample_av_history(batch: Data, T: int = 20) -> Tensor:
   
     counts = Counter(batch_vec.tolist())  # Counts how many times each graph ID appears
     num_nodes_list = [counts[i] for i in range(max(counts.keys()) + 1)]
-    print("Number of nodes per graph:", num_nodes_list)
+    # print("Number of nodes per graph:", num_nodes_list)
     
     # av_trajs = []
 

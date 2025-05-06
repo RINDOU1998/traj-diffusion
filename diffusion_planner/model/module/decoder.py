@@ -86,8 +86,37 @@ class Decoder(nn.Module):
         encoding = encoder_outputs + type_embedding                        # [B*N, 2*D]
         
 
-        print("x_his.shape",x_his.shape)
+        #print("x_his.shape",x_his.shape)
         B, P, T, _ = x_his.shape
+
+        # DPM Sampler(do inference here, denoise the sampled noise with context guidance)
+
+        # [B, 1 , 20 * 2]
+        xT = torch.cat([torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, 19:]], dim=2).reshape(B, P, -1)
+
+        def initial_state_constraint(xt, t, step):
+            xt = xt.reshape(B, P, -1, 2)
+            return xt.reshape(B, P, -1)
+        
+        # TODO: modify sampler 
+        # x, t, cross_c, batch_vec
+        x0 = dpm_sampler(
+                    self.dit,
+                    xT,
+                    other_model_params={
+                        "t" : diffusion_time,
+                        "cross_c": encoding, 
+                        "batch_vec": batch_vec,                                 
+                    },
+                    dpm_solver_params={
+                        "correcting_xt_fn":initial_state_constraint,
+                    }
+            )
+        #NOTE： remove state normalizer 
+        # x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 2))
+
+
+
         if self.training:
             t = torch.rand(B, device=x_his.device) * (1 - eps) + eps # [B,]
             z = torch.randn_like(x_his, device=x_his.device)
@@ -105,35 +134,10 @@ class Decoder(nn.Module):
                     ).reshape(B, P, -1, 2),
                     "std" : std,
                     "z" : z,
-                    "gt" : x_his
+                    "gt" : x_his,
+                    "x0": x0
                 }
         else:
-            # [B, 1 , 20 * 2]
-            xT = torch.cat([torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, 19:]], dim=2).reshape(B, P, -1)
-
-            def initial_state_constraint(xt, t, step):
-                xt = xt.reshape(B, P, -1, 2)
-                return xt.reshape(B, P, -1)
-            
-
-
-            # TODO: modify sampler 
-            # x, t, cross_c, batch_vec
-            x0 = dpm_sampler(
-                        self.dit,
-                        xT,
-                        other_model_params={
-                            "t" : diffusion_time,
-                            "cross_c": encoding, 
-                            "batch_vec": batch_vec,                                 
-                        },
-                        dpm_solver_params={
-                            "correcting_xt_fn":initial_state_constraint,
-                        }
-                )
-            #NOTE： remove state normalizer 
-            # x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 2))
-
             return {
                     "prediction": x0
                 }
@@ -289,7 +293,7 @@ class DiT(nn.Module):
         B, P, _ = x.shape
         
         x = self.preproj(x)
-        print("x after preporj shape:", x.shape)
+        #print("x after preporj shape:", x.shape)
         # NOTE add t_embedder
         t_embed = self.t_embedder(t)           # [B, D]
         x = x + t_embed.unsqueeze(1)           # Inject time info [B, P, D]

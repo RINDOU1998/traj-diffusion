@@ -278,7 +278,7 @@ def model_training(args):
                 print(f"Model saved in {save_path}\n")
 
         scheduler.step()
-        train_sampler.set_epoch(epoch + 1)
+        #train_sampler.set_epoch(epoch + 1)
 
 if __name__ == "__main__":
 

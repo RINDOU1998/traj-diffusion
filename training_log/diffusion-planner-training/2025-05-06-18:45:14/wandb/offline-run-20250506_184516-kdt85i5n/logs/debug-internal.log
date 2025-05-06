@@ -1,0 +1,16 @@
+{"time":"2025-05-06T18:45:17.19239818+08:00","level":"INFO","msg":"stream: starting","core version":"0.19.10","symlink path":"training_log/diffusion-planner-training/2025-05-06-18:45:14/wandb/offline-run-20250506_184516-kdt85i5n/logs/debug-core.log"}
+{"time":"2025-05-06T18:45:17.402638717+08:00","level":"WARN","msg":"GraphQL client is nil, skipping feature loading"}
+{"time":"2025-05-06T18:45:17.402815658+08:00","level":"INFO","msg":"created new stream","id":"kdt85i5n"}
+{"time":"2025-05-06T18:45:17.402891674+08:00","level":"INFO","msg":"stream: started","id":"kdt85i5n"}
+{"time":"2025-05-06T18:45:17.402988623+08:00","level":"INFO","msg":"writer: Do: started","stream_id":"kdt85i5n"}
+{"time":"2025-05-06T18:45:17.403058313+08:00","level":"INFO","msg":"handler: started","stream_id":"kdt85i5n"}
+{"time":"2025-05-06T18:45:17.403088596+08:00","level":"INFO","msg":"sender: started","stream_id":"kdt85i5n"}
+{"time":"2025-05-06T18:45:17.408894613+08:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-05-06T18:45:27.577257599+08:00","level":"INFO","msg":"tensorboard: no root directory after 10 seconds, using working directory"}
+{"time":"2025-05-06T18:45:50.453906072+08:00","level":"INFO","msg":"stream: closing","id":"kdt85i5n"}
+{"time":"2025-05-06T18:45:50.454379783+08:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-05-06T18:45:50.454857783+08:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-05-06T18:45:50.456415488+08:00","level":"INFO","msg":"handler: closed","stream_id":"kdt85i5n"}
+{"time":"2025-05-06T18:45:50.456619354+08:00","level":"INFO","msg":"sender: closed","stream_id":"kdt85i5n"}
+{"time":"2025-05-06T18:45:50.456775415+08:00","level":"INFO","msg":"writer: Close: closed","stream_id":"kdt85i5n"}
+{"time":"2025-05-06T18:45:50.457697891+08:00","level":"INFO","msg":"stream: closed","id":"kdt85i5n"}

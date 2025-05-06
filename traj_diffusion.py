@@ -24,6 +24,11 @@ class Traj_Diffusion(nn.Module):
 
         encoder_outputs = self.encoder(inputs)
         decoder_outputs = self.decoder(encoder_outputs, inputs)
+        # sample reconstructed trajectories 
+        # DMP Sampler
+        
+
+
 
         return encoder_outputs, decoder_outputs
 
