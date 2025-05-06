@@ -1,0 +1,16 @@
+{"time":"2025-05-05T00:18:38.248218364+08:00","level":"INFO","msg":"stream: starting","core version":"0.19.10","symlink path":"training_log/diffusion-planner-training/2025-05-05-00:18:37/wandb/offline-run-20250505_001837-5ggnl3a9/logs/debug-core.log"}
+{"time":"2025-05-05T00:18:38.350603097+08:00","level":"WARN","msg":"GraphQL client is nil, skipping feature loading"}
+{"time":"2025-05-05T00:18:38.350719325+08:00","level":"INFO","msg":"created new stream","id":"5ggnl3a9"}
+{"time":"2025-05-05T00:18:38.350749885+08:00","level":"INFO","msg":"stream: started","id":"5ggnl3a9"}
+{"time":"2025-05-05T00:18:38.350763879+08:00","level":"INFO","msg":"handler: started","stream_id":"5ggnl3a9"}
+{"time":"2025-05-05T00:18:38.350782446+08:00","level":"INFO","msg":"sender: started","stream_id":"5ggnl3a9"}
+{"time":"2025-05-05T00:18:38.350819021+08:00","level":"INFO","msg":"writer: Do: started","stream_id":"5ggnl3a9"}
+{"time":"2025-05-05T00:18:38.355447202+08:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-05-05T00:18:39.357674764+08:00","level":"INFO","msg":"stream: closing","id":"5ggnl3a9"}
+{"time":"2025-05-05T00:18:39.357705054+08:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-05-05T00:18:39.357781685+08:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-05-05T00:18:48.463818872+08:00","level":"INFO","msg":"tensorboard: no root directory after 10 seconds, using working directory"}
+{"time":"2025-05-05T00:18:48.464330644+08:00","level":"INFO","msg":"handler: closed","stream_id":"5ggnl3a9"}
+{"time":"2025-05-05T00:18:48.464351275+08:00","level":"INFO","msg":"writer: Close: closed","stream_id":"5ggnl3a9"}
+{"time":"2025-05-05T00:18:48.464395385+08:00","level":"INFO","msg":"sender: closed","stream_id":"5ggnl3a9"}
+{"time":"2025-05-05T00:18:48.464416683+08:00","level":"INFO","msg":"stream: closed","id":"5ggnl3a9"}

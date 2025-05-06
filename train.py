@@ -55,53 +55,56 @@ def add_model_specific_args(parent_parser):
 
 
 def get_args():
+    parser = argparse.ArgumentParser(description='Training')
     # HiVT args
     
     parser.add_argument('--root', type=str, required=True)
     parser.add_argument('--train_batch_size', type=int, default=32)
     parser.add_argument('--val_batch_size', type=int, default=32)
     parser.add_argument('--shuffle', type=bool, default=True)
-    # parser.add_argument('--num_workers', type=int, default=8)
+    #parser.add_argument('--num_workers', type=int, default=8)
     # parser.add_argument('--pin_memory', type=bool, default=True)
     parser.add_argument('--persistent_workers', type=bool, default=True)
     parser.add_argument('--gpus', type=int, default=1)
-    parser.add_argument('--max_epochs', type=int, default=64)
+    #parser.add_argument('--max_epochs', type=int, default=64)
     parser.add_argument('--monitor', type=str, default='val_minFDE', choices=['val_minADE', 'val_minFDE', 'val_minMR'])
     parser.add_argument('--save_top_k', type=int, default=5)
     parser = add_model_specific_args(parser)
 
 
     # Arguments
-    parser = argparse.ArgumentParser(description='Training')
+    
     parser.add_argument('--name', type=str, help='log name (default: "diffusion-planner-training")', default="diffusion-planner-training")
     parser.add_argument('--save_dir', type=str, help='save dir for model ckpt', default=".")
 
     # Data
-    parser.add_argument('--train_set', type=str, help='path to train data', default=None)
-    parser.add_argument('--train_set_list', type=str, help='data list of train data', default=None)
 
-    parser.add_argument('--future_len', type=int, help='number of time point', default=80)
-    parser.add_argument('--time_len', type=int, help='number of time point', default=21)
+    # parser.add_argument('--train_set', type=str, help='path to train data', default=None)
+    # parser.add_argument('--train_set_list', type=str, help='data list of train data', default=None)
 
-    parser.add_argument('--agent_state_dim', type=int, help='past state dim for agents', default=11)
-    parser.add_argument('--agent_num', type=int, help='number of agents', default=32)
+    # parser.add_argument('--future_len', type=int, help='number of time point', default=80)
+    # parser.add_argument('--time_len', type=int, help='number of time point', default=21)
 
-    parser.add_argument('--static_objects_state_dim', type=int, help='state dim for static objects', default=10)
-    parser.add_argument('--static_objects_num', type=int, help='number of static objects', default=5)
+    # parser.add_argument('--agent_state_dim', type=int, help='past state dim for agents', default=11)
+    # parser.add_argument('--agent_num', type=int, help='number of agents', default=32)
 
-    parser.add_argument('--lane_len', type=int, help='number of lane point', default=20)
-    parser.add_argument('--lane_state_dim', type=int, help='state dim for lane point', default=12)
-    parser.add_argument('--lane_num', type=int, help='number of lanes', default=70)
+    # parser.add_argument('--static_objects_state_dim', type=int, help='state dim for static objects', default=10)
+    # parser.add_argument('--static_objects_num', type=int, help='number of static objects', default=5)
 
-    parser.add_argument('--route_len', type=int, help='number of route lane point', default=20)
-    parser.add_argument('--route_state_dim', type=int, help='state dim for route lane point', default=12)
-    parser.add_argument('--route_num', type=int, help='number of route lanes', default=25)
-    
+    # parser.add_argument('--lane_len', type=int, help='number of lane point', default=20)
+    # parser.add_argument('--lane_state_dim', type=int, help='state dim for lane point', default=12)
+    # parser.add_argument('--lane_num', type=int, help='number of lanes', default=70)
+
+    # parser.add_argument('--route_len', type=int, help='number of route lane point', default=20)
+    # parser.add_argument('--route_state_dim', type=int, help='state dim for route lane point', default=12)
+    # parser.add_argument('--route_num', type=int, help='number of route lanes', default=25)
+
+
     # DataLoader parameters
     parser.add_argument('--augment_prob', type=float, help='augmentation probability', default=0.5)
     parser.add_argument('--normalization_file_path', default='normalization.json', help='filepath of normalizaiton.json', type=str)
-    parser.add_argument('--use_data_augment', default=True, type=boolean)
-    parser.add_argument('--num_workers', default=4, type=int)
+    parser.add_argument('--use_data_augment', default=False, type=boolean)
+    parser.add_argument('--num_workers', default=8, type=int)
     parser.add_argument('--pin-mem', action='store_true', help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no-pin-mem', action='store_false', dest='pin_mem', help='')
     parser.set_defaults(pin_mem=True)
@@ -112,6 +115,7 @@ def get_args():
     parser.add_argument('--save_utd', type=int, help='save frequency', default=20)
     parser.add_argument('--batch_size', type=int, help='batch size (default: 32)', default=32)
     parser.add_argument('--learning_rate', type=float, help='learning rate (default: 5e-4)', default=5e-4)
+
     parser.add_argument('--warm_up_epoch', type=int, help='number of warm up', default=5)
     parser.add_argument('--encoder_drop_path_rate', type=float, help='encoder drop out rate', default=0.1)
     parser.add_argument('--decoder_drop_path_rate', type=float, help='decoder drop out rate', default=0.1)
@@ -120,13 +124,13 @@ def get_args():
 
     parser.add_argument('--device', type=str, help='run on which device (default: cuda)', default='cuda')
 
-    parser.add_argument('--use_ema', default=True, type=boolean)
+    parser.add_argument('--use_ema', default=False, type=boolean)
 
     # Model
     parser.add_argument('--encoder_depth', type=int, help='number of encoding layers', default=3)
     parser.add_argument('--decoder_depth', type=int, help='number of decoding layers', default=3)
-    parser.add_argument('--num_heads', type=int, help='number of multi-head', default=6)
-    parser.add_argument('--hidden_dim', type=int, help='hidden dimension', default=192)
+    #parser.add_argument('--num_heads', type=int, help='number of multi-head', default=6)
+    parser.add_argument('--hidden_dim', type=int, help='hidden dimension', default=256)
     parser.add_argument('--diffusion_model_type', type=str, help='type of diffusion model [x_start, score]', choices=['score', 'x_start'], default='x_start')
 
     # decoder
@@ -137,14 +141,15 @@ def get_args():
     parser.add_argument('--notes', default='', type=str)
 
     # distributed training parameters
-    parser.add_argument('--ddp', default=True, type=boolean, help='use ddp or not')
+    parser.add_argument('--ddp', default=False, type=boolean, help='use ddp or not')
     parser.add_argument('--port', default='22323', type=str, help='port')
 
     args = parser.parse_args()
 
-    args.state_normalizer = StateNormalizer.from_json(args)
-    args.observation_normalizer = ObservationNormalizer.from_json(args)
-    
+    #args.state_normalizer = StateNormalizer.from_json(args)
+    args.state_normalizer = None
+    #args.observation_normalizer = ObservationNormalizer.from_json(args)
+    args.observation_normalizer = None
     return args
 
 def model_training(args):
@@ -199,9 +204,10 @@ def model_training(args):
     # create train set , train_sampler, and train_loader from  ArgoverseV1Dataset  and ArgoverseV1DataModule
     # aug = StatePerturbation(augment_prob=args.augment_prob, device=args.device) if args.use_data_augment else None
     aug = None
-    train_set = ArgoverseV1Dataset(args.root, 'train', None, args.local_radius)
-    train_sampler = DistributedSampler(train_set, num_replicas=ddp.get_world_size(), rank=global_rank, shuffle=True)
-    train_loader = DataLoader(train_set, sampler=train_sampler, batch_size=batch_size//ddp.get_world_size(), num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=True)
+    train_set = ArgoverseV1Dataset(args.root, 'train', None, args.local_radius )
+    # train_sampler = DistributedSampler(train_set, num_replicas=ddp.get_world_size(), rank=global_rank, shuffle=True)
+    # sampler=train_sampler,
+    train_loader = DataLoader(train_set,  batch_size=batch_size//ddp.get_world_size(), num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=True)
     
 
 
@@ -257,7 +263,7 @@ def model_training(args):
     for epoch in range(init_epoch, train_epochs):
         if global_rank == 0:
             print(f"Epoch {epoch+1}/{train_epochs}")
-        train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args, model_ema, aug)
+        train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args,  aug)
         
 
 
@@ -268,7 +274,7 @@ def model_training(args):
 
             if (epoch+1) % args.save_utd == 0:
                 # save model at the end of epoch
-                save_model(diffusion_planner, optimizer, scheduler, save_path, epoch, train_total_loss, wandb_logger.id, model_ema.ema)
+                save_model(diffusion_planner, optimizer, scheduler, save_path, epoch, train_total_loss, wandb_logger.id)
                 print(f"Model saved in {save_path}\n")
 
         scheduler.step()

@@ -33,6 +33,8 @@ class HiVT_Encoder(nn.Module):
     def __init__(self, config):
         super().__init__()
 
+        self.device = torch.device(config.device)
+
         self.historical_steps = config.historical_steps
         self.future_steps = config.future_steps
         self.num_modes = config.num_modes

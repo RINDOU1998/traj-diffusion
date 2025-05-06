@@ -51,11 +51,11 @@ class TemporalData(Data):
             for t in range(self.x.size(1)):
                 self[f'edge_attr_{t}'] = edge_attrs[t]
 
-    def __inc__(self, key, value):
+    def __inc__(self, key, value,store=None):
         if key == 'lane_actor_index':
             return torch.tensor([[self['lane_vectors'].size(0)], [self.num_nodes]])
         else:
-            return super().__inc__(key, value)
+            return super().__inc__(key, value, store)
 
 
 class DistanceDropEdge(object):

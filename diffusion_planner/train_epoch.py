@@ -8,7 +8,7 @@ from diffusion_planner.utils import ddp
 from diffusion_planner.loss import diffusion_loss_func
 
 
-def train_epoch(data_loader, model, optimizer, args, ema, aug=None):
+def train_epoch(data_loader, model, optimizer, args,  aug=None):
     epoch_loss = []
 
     model.train()
@@ -119,7 +119,7 @@ def train_epoch(data_loader, model, optimizer, args, ema, aug=None):
             nn.utils.clip_grad_norm_(model.parameters(), 5)
             optimizer.step()
 
-            ema.update(model)
+            #ema.update(model)
 
             if args.ddp:
                 torch.cuda.synchronize()

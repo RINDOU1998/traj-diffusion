@@ -105,7 +105,8 @@ class DiTBlock(nn.Module):
        
 
         context, mask = to_dense_batch(cross_c, batch_vec)  # [B, N_max, D], [B, N_max]
-
+        print("context shape:", context.shape)
+        print(" x shape:", x.shape)
         x, _ = self.cross_attn(
             query=self.norm1(x),                # [B, P, D]
             key=context, value=context, # [B, N_max, D]

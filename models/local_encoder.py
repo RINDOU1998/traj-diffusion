@@ -239,7 +239,8 @@ class TemporalEncoder(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                padding_mask: torch.Tensor) -> torch.Tensor:
+                padding_mask: torch.Tensor,
+                ) -> torch.Tensor:
         x = torch.where(padding_mask.t().unsqueeze(-1), self.padding_token, x)
         expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
         x = torch.cat((x, expand_cls_token), dim=0)
@@ -269,11 +270,13 @@ class TemporalEncoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(embed_dim)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
-
+# NOTE update is_causal and kwargs for torch 2.0
     def forward(self,
                 src: torch.Tensor,
                 src_mask: Optional[torch.Tensor] = None,
-                src_key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+                src_key_padding_mask: Optional[torch.Tensor] = None,
+                is_causal=False,
+                **kwargs) -> torch.Tensor:
         x = src
         x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask)
         x = x + self._ff_block(self.norm2(x))

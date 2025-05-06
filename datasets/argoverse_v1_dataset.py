@@ -51,7 +51,11 @@ class ArgoverseV1Dataset(Dataset):
         self._raw_file_names = os.listdir(self.raw_dir)
         self._processed_file_names = [os.path.splitext(f)[0] + '.pt' for f in self.raw_file_names]
         self._processed_paths = [os.path.join(self.processed_dir, f) for f in self._processed_file_names]
+        #print("self._processed_paths = ", self._processed_paths)
         super(ArgoverseV1Dataset, self).__init__(root, transform=transform)
+    
+  
+    
 
     @property
     def raw_dir(self) -> str:
@@ -73,15 +77,17 @@ class ArgoverseV1Dataset(Dataset):
     def processed_paths(self) -> List[str]:
         return self._processed_paths
 
-    def process(self) -> None:
-        am = ArgoverseMap()
-        for raw_path in tqdm(self.raw_paths):
-            kwargs = process_argoverse(self._split, raw_path, am, self._local_radius)
-            data = TemporalData(**kwargs)
-            torch.save(data, os.path.join(self.processed_dir, str(kwargs['seq_id']) + '.pt'))
+    # disable processing for now 
+
+    # def process(self) -> None:
+    #     am = ArgoverseMap()
+    #     for raw_path in tqdm(self.raw_paths):
+    #         kwargs = process_argoverse(self._split, raw_path, am, self._local_radius)
+    #         data = TemporalData(**kwargs)
+    #         torch.save(data, os.path.join(self.processed_dir, str(kwargs['seq_id']) + '.pt'))
 
     def len(self) -> int:
-        return len(self._raw_file_names)
+        return len(self._processed_file_names)
 
     def get(self, idx) -> Data:
         return torch.load(self.processed_paths[idx])

@@ -17,12 +17,12 @@ class Decoder(nn.Module):
 
         dpr = config.decoder_drop_path_rate
         self._predicted_neighbor_num = config.predicted_neighbor_num
-        self._future_len = config.future_len
+        self._future_len = 30
         self._sde = VPSDE_linear()
 
         self.dit = DiT(
             sde=self._sde, 
-            route_encoder = RouteEncoder(config.route_num, config.lane_len, drop_path_rate=config.encoder_drop_path_rate, hidden_dim=config.hidden_dim),
+            # route_encoder = RouteEncoder(config.route_num, config.lane_len, drop_path_rate=config.encoder_drop_path_rate, hidden_dim=config.hidden_dim),
             depth=config.decoder_depth, 
             #output_dim= (config.future_len + 1) * 4, # x, y, cos, sin
             output_dim= (20) * 2, # x, y in L comp
@@ -65,19 +65,29 @@ class Decoder(nn.Module):
         """
 
         # NOTE prepare av trajectory and diffusion time if training
+        
+        # Inspect the inputs
+        # print("Encoder Outputs Shape:", encoder_outputs.shape)
+        # print("Inputs Keys:", inputs.keys())
+        # print("Inputs Batch Shape:", inputs.batch.shape)
+        # print("Inputs AV Index:", inputs.av_index)
+        # print("inputs.agent_id",inputs.agent_index)
+
+        
+        batch_vec = inputs.batch        
         x_his = sample_av_history(inputs) # [B, 1, 20, 2]
 
         B = inputs.batch.max().item() + 1
         # NOTE instead of extract_av_embeddings, add class embedding into encoder_outputs and use all embedding and preproj x into same embedding space as encoder_outpus
         
-        batch_vec = inputs.batch
+        
         agent_type = extract_agent_type(batch_vec, inputs.av_index, B)# [B*N] 0 for av ,  1 for others
         type_embedding = self.agent_type_embed(agent_type)                 # [B*N, 2*D]
         encoding = encoder_outputs + type_embedding                        # [B*N, 2*D]
         
 
-
-        B, P, _ = x_his.shape
+        print("x_his.shape",x_his.shape)
+        B, P, T, _ = x_his.shape
         if self.training:
             t = torch.rand(B, device=x_his.device) * (1 - eps) + eps # [B,]
             z = torch.randn_like(x_his, device=x_his.device)
@@ -243,14 +253,14 @@ class RouteEncoder(nn.Module):
         
         return x_result.view(B, -1)
 
-
+# NOTE remove route_encoder
 class DiT(nn.Module):
-    def __init__(self, sde: SDE, route_encoder: nn.Module, depth, output_dim, hidden_dim=256, heads=6, dropout=0.1, mlp_ratio=4.0, model_type="x_start"):
+    def __init__(self, sde: SDE,  depth, output_dim, hidden_dim=256, heads=6, dropout=0.1, mlp_ratio=4.0, model_type="x_start"):
         super().__init__()
         
         assert model_type in ["score", "x_start"], f"Unknown model type: {model_type}"
         self._model_type = model_type
-        self.route_encoder = route_encoder
+        #self.route_encoder = route_encoder
         self.agent_embedding = nn.Embedding(2, hidden_dim)
         self.preproj = Mlp(in_features=output_dim, hidden_features=512, out_features=hidden_dim, act_layer=nn.GELU, drop=0.)
         self.t_embedder = TimestepEmbedder(hidden_dim) # add t_embedding into x_t instead of context
@@ -279,6 +289,7 @@ class DiT(nn.Module):
         B, P, _ = x.shape
         
         x = self.preproj(x)
+        print("x after preporj shape:", x.shape)
         # NOTE add t_embedder
         t_embed = self.t_embedder(t)           # [B, D]
         x = x + t_embed.unsqueeze(1)           # Inject time info [B, P, D]
