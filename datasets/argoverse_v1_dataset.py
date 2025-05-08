@@ -79,12 +79,12 @@ class ArgoverseV1Dataset(Dataset):
 
     # disable processing for now 
 
-    # def process(self) -> None:
-    #     am = ArgoverseMap()
-    #     for raw_path in tqdm(self.raw_paths):
-    #         kwargs = process_argoverse(self._split, raw_path, am, self._local_radius)
-    #         data = TemporalData(**kwargs)
-    #         torch.save(data, os.path.join(self.processed_dir, str(kwargs['seq_id']) + '.pt'))
+    def process(self) -> None:
+        am = ArgoverseMap()
+        for raw_path in tqdm(self.raw_paths):
+            kwargs = process_argoverse(self._split, raw_path, am, self._local_radius)
+            data = TemporalData(**kwargs)
+            torch.save(data, os.path.join(self.processed_dir, str(kwargs['seq_id']) + '.pt'))
 
     def len(self) -> int:
         return len(self._processed_file_names)

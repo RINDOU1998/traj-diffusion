@@ -41,7 +41,7 @@ def get_epoch_mean_loss(epoch_loss):
 
     return epoch_mean_loss
 
-def save_model(model, optimizer, scheduler, save_path, epoch, train_loss, wandb_id, ema):
+def save_model(model, optimizer, scheduler, save_path, epoch, train_loss, wandb_id):
     """
     save the model to path
     """

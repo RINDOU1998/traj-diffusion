@@ -100,11 +100,13 @@ class Decoder(nn.Module):
         
         # TODO: modify sampler 
         # x, t, cross_c, batch_vec
+        t = torch.rand(B, device=x_his.device) * (1 - eps) + eps
+        diffusion_time = t
         x0 = dpm_sampler(
                     self.dit,
                     xT,
                     other_model_params={
-                        "t" : diffusion_time,
+                
                         "cross_c": encoding, 
                         "batch_vec": batch_vec,                                 
                     },
@@ -112,18 +114,20 @@ class Decoder(nn.Module):
                         "correcting_xt_fn":initial_state_constraint,
                     }
             )
+        
+       
+        x0 = x0.reshape(B, P, -1, 2) 
         #NOTE： remove state normalizer 
         # x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 2))
 
 
 
-        if self.training:
-            t = torch.rand(B, device=x_his.device) * (1 - eps) + eps # [B,]
+        if self.training: # [B,]
             z = torch.randn_like(x_his, device=x_his.device)
             mean, std = self._sde.marginal_prob(x_his, t)
             sampled_trajectories = mean + std * z
             sampled_trajectories = sampled_trajectories.reshape(B, P, -1) # [B, 1,20]
-            diffusion_time = t
+            
             return {
                     "score": self.dit(
                         sampled_trajectories, 

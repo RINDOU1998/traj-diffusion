@@ -110,6 +110,9 @@ class MLPDecoder(nn.Module):
             nn.LayerNorm(self.hidden_size),
             nn.ReLU(inplace=True),
             nn.Linear(self.hidden_size, self.future_steps * 2))
+        
+        self.multihead_proj = nn.Linear(self.input_size, num_modes * self.input_size)
+        
         if uncertain:
             self.scale = nn.Sequential(
                 nn.Linear(self.hidden_size, self.hidden_size),
@@ -129,6 +132,9 @@ class MLPDecoder(nn.Module):
     def forward(self,
                 local_embed: torch.Tensor,
                 global_embed: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        
+        global_embed = self.multihead_proj(global_embed).view(-1, self.num_modes, self.hidden_size)  # [N, F, D]
+        global_embed = global_embed.transpose(0, 1)  # [F, N, D]
         pi = self.pi(torch.cat((local_embed.expand(self.num_modes, *local_embed.shape),
                                 global_embed), dim=-1)).squeeze(-1).t()
         out = self.aggr_embed(torch.cat((global_embed, local_embed.expand(self.num_modes, *local_embed.shape)), dim=-1))

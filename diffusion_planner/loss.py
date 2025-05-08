@@ -4,6 +4,7 @@ import torch.nn as nn
 from diffusion_planner.utils.utils import TemporalData
 from diffusion_planner.utils.normalizer import StateNormalizer
 
+
 """
 Training phase
     input : 
@@ -34,7 +35,6 @@ def diffusion_loss_func(
     #futures: Tuple[torch.Tensor, torch.Tensor],
     norm: StateNormalizer,
     loss: Dict[str, Any],
-
     model_type: str,
     eps: float = 1e-3,
 ):   
@@ -70,7 +70,7 @@ def diffusion_loss_func(
     #     "diffusion_time": t,
     # }
     # NOTE calculate the loss from score from sampled history trajectory,complete 20 frames 
-    _, decoder_output = model(inputs) # [B, 1 ,T, 2]
+    _, decoder_output ,y_hat, pi= model(inputs) # [B, 1 ,T, 2]
     
    
     # score = decoder_output["score"][:, :, 1:, :] # [B, P, T, 2]
@@ -94,5 +94,11 @@ def diffusion_loss_func(
 
     loss["reconstruction_loss"] = dpm_loss.mean()
     assert not torch.isnan(dpm_loss).sum(), f"loss cannot be nan, z={z}"
+
+    combined_loss, reg_loss, cls_loss = model.compute_loss(y_hat, pi, inputs)
+    loss['regression_loss'] = reg_loss
+    loss['classification_loss'] = cls_loss
+    # prediction loss
+    
 
     return loss, decoder_output

@@ -1,12 +1,17 @@
 
 import torch
 import torch.nn as nn
-
 #from diffusion_planner.model.module.encoder import Encoder
 from diffusion_planner.model.module.decoder import Decoder
 from models import GlobalInteractor
 from models import LocalEncoder
+from models import MLPDecoder
 from diffusion_planner.utils.utils import TemporalData
+from copy import deepcopy
+from losses import LaplaceNLLLoss
+from losses import SoftTargetCrossEntropyLoss
+import torch.nn.functional as F
+
 
 class Traj_Diffusion(nn.Module):
     def __init__(self, config):
@@ -14,23 +19,75 @@ class Traj_Diffusion(nn.Module):
 
         self.encoder = HiVT_Encoder(config)
         self.decoder = Diffusion_Planner_Decoder(config)
-
+        self.pred_decoder = MLPDecoder(local_channels=config.embed_dim,
+                                  global_channels=config.embed_dim,
+                                  future_steps=config.future_steps,
+                                  num_modes=config.num_modes,
+                                  uncertain=True)
+        self.rotate = config.rotate
+        self.device = torch.device(config.device)
+        self.reg_loss = LaplaceNLLLoss(reduction='mean')
+        self.cls_loss = SoftTargetCrossEntropyLoss(reduction='mean')
     @property
     def sde(self):
         return self.decoder.decoder.sde
     
     # expect HiVt preprocessed data as input
     def forward(self, inputs: TemporalData):
+        ################### rotate preprocess#######################################
+        if self.rotate and 'rotate_mat' not in inputs:
+            rotate_mat = torch.empty(inputs.num_nodes, 2, 2, device=self.device)
+            sin_vals = torch.sin(inputs['rotate_angles'])
+            cos_vals = torch.cos(inputs['rotate_angles'])
+            rotate_mat[:, 0, 0] = cos_vals
+            rotate_mat[:, 0, 1] = -sin_vals
+            rotate_mat[:, 1, 0] = sin_vals
+            rotate_mat[:, 1, 1] = cos_vals
+            if inputs.y is not None:
+                inputs.y = torch.bmm(inputs.y, rotate_mat)
+            inputs['rotate_mat'] = rotate_mat
+        else:
+            inputs['rotate_mat'] = None
+        #############################################################################
 
-        encoder_outputs = self.encoder(inputs)
+
+        encoder_outputs,_,_= self.encoder(inputs)
         decoder_outputs = self.decoder(encoder_outputs, inputs)
         # sample reconstructed trajectories 
-        # DMP Sampler
-        
+        # DMP Sampler output
+        x0 = decoder_outputs['x0']  #[B,P,20,2]
+        x0 = x0.squeeze(1)
+      
+        # use deep copy
+        # reconstructed_inputs = deepcopy(inputs)
+
+        # if hasattr(inputs, 'rotate_mat'):
+        #     reconstructed_inputs.rotate_mat = inputs.rotate_mat
+        # else:
+        #     reconstructed_inputs.rotate_mat = None
+
+        # reconstructed_inputs.x[inputs['av_index']] = x0 
+        inputs.x[inputs.av_index] = x0
+
+        _ , local_embed, global_embed = self.encoder(inputs)
+        # prediction head
+        y_hat, pi = self.pred_decoder(local_embed=local_embed, global_embed=global_embed)
 
 
-
-        return encoder_outputs, decoder_outputs
+        return encoder_outputs, decoder_outputs,y_hat, pi
+    
+    def compute_loss(self, y_hat, pi, inputs: TemporalData):
+        reg_mask = ~inputs['padding_mask'][:, 20:]
+        valid_steps = reg_mask.sum(dim=-1)
+        cls_mask = valid_steps > 0
+        l2_norm = (torch.norm(y_hat[:, :, :, : 2] - inputs.y, p=2, dim=-1) * reg_mask).sum(dim=-1)  # [F, N]
+        best_mode = l2_norm.argmin(dim=0)
+        y_hat_best = y_hat[best_mode, torch.arange(inputs.num_nodes)]
+        reg_loss = self.reg_loss(y_hat_best[reg_mask], inputs.y[reg_mask])
+        soft_target = F.softmax(-l2_norm[:, cls_mask] / valid_steps[cls_mask], dim=0).t().detach()
+        cls_loss = self.cls_loss(pi[cls_mask], soft_target)
+        loss = reg_loss + cls_loss
+        return loss, reg_loss, cls_loss
 
 
 # use backbone encoder to extract features from the input data
@@ -83,24 +140,12 @@ class HiVT_Encoder(nn.Module):
         self.apply(_basic_init)
 
     def forward(self, data: TemporalData):
-        if self.rotate:
-            rotate_mat = torch.empty(data.num_nodes, 2, 2, device=self.device)
-            sin_vals = torch.sin(data['rotate_angles'])
-            cos_vals = torch.cos(data['rotate_angles'])
-            rotate_mat[:, 0, 0] = cos_vals
-            rotate_mat[:, 0, 1] = -sin_vals
-            rotate_mat[:, 1, 0] = sin_vals
-            rotate_mat[:, 1, 1] = cos_vals
-            if data.y is not None:
-                data.y = torch.bmm(data.y, rotate_mat)
-            data['rotate_mat'] = rotate_mat
-        else:
-            data['rotate_mat'] = None
-
+        # NOTE avoid rotate again if already rotated
+        
         local_embed = self.local_encoder(data=data)
         global_embed = self.global_interactor(data=data, local_embed=local_embed)
         encoder_outputs = torch.cat((local_embed,global_embed), dim=-1) # [N,2*embed_dim]
-        return encoder_outputs
+        return encoder_outputs , local_embed, global_embed
     
 
 class Diffusion_Planner_Decoder(nn.Module):
