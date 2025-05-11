@@ -57,6 +57,7 @@ class Traj_Diffusion(nn.Module):
         # DMP Sampler output
         x0 = decoder_outputs['x0']  #[B,P,20,2]
         x0 = x0.squeeze(1)
+        
       
         # use deep copy
         # reconstructed_inputs = deepcopy(inputs)

@@ -3,3 +3,4 @@
 *.pt
 *.ckpt
 *.h5
+training_log/

@@ -98,6 +98,7 @@ class Decoder(nn.Module):
             xt = xt.reshape(B, P, -1, 2)
             return xt.reshape(B, P, -1)
         
+      
         # TODO: modify sampler 
         # x, t, cross_c, batch_vec
         t = torch.rand(B, device=x_his.device) * (1 - eps) + eps
@@ -117,6 +118,9 @@ class Decoder(nn.Module):
         
        
         x0 = x0.reshape(B, P, -1, 2) 
+        
+
+        
         #NOTE： remove state normalizer 
         # x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 2))
 
@@ -269,7 +273,7 @@ class DiT(nn.Module):
         assert model_type in ["score", "x_start"], f"Unknown model type: {model_type}"
         self._model_type = model_type
         #self.route_encoder = route_encoder
-        self.agent_embedding = nn.Embedding(2, hidden_dim)
+        #self.agent_embedding = nn.Embedding(2, hidden_dim)
         self.preproj = Mlp(in_features=output_dim, hidden_features=512, out_features=hidden_dim, act_layer=nn.GELU, drop=0.)
         self.t_embedder = TimestepEmbedder(hidden_dim) # add t_embedding into x_t instead of context
         self.blocks = nn.ModuleList([DiTBlock(hidden_dim, heads, dropout, mlp_ratio) for i in range(depth)])

@@ -110,11 +110,30 @@ def train_epoch(data_loader, model, optimizer, args,  aug=None):
            
             #loss['loss'] = loss['neighbor_prediction_loss'] + args.alpha_planning_loss * loss['ego_planning_loss']
             loss['loss'] = loss["reconstruction_loss"] + loss['regression_loss'] + loss['classification_loss']
+            # backward losses
+            #loss['loss'] =  loss['regression_loss'] + loss['classification_loss']
+            
+
+
             ## NOTE replace loss by reconstruction loss
             total_loss = loss['loss'].item()
 
             # loss backward
             loss['loss'].backward()
+
+            # check grad
+            # print("\n🔍 Checking DiT parameter gradients:")
+            # has_grad = False
+            # for name, param in model.decoder.named_parameters():
+            #     if param.grad is not None:
+            #         print(f" ✅ {name}: grad norm = {param.grad.norm():.4e}")
+            #         has_grad = True
+            #     else:
+            #         print(f" ❌ {name}: grad is None")
+            # if not has_grad:
+            #     print(" ❌ No DiT parameters received gradient from prediction loss.")
+
+
             # clip gradient to prevent gradient explosion
             nn.utils.clip_grad_norm_(model.parameters(), 5)
             optimizer.step()
@@ -136,3 +155,4 @@ def train_epoch(data_loader, model, optimizer, args,  aug=None):
         print(f"epoch train loss: {epoch_mean_loss['loss']:.4f}\n")
         
     return epoch_mean_loss, epoch_mean_loss['loss']
+
