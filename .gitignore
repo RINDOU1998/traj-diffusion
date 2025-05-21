@@ -1,0 +1,73 @@
+# Ignore typical large model/data files
+*.h5
+*.hdf5
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.pb
+*.npy
+*.npz
+*.joblib
+*.pkl
+*.sav
+
+# Ignore dataset or archive files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.mdb
+
+# Ignore logs and debug info
+*.log
+*.out
+*.err
+*.tmp
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Python bytecode
+__pycache__/
+*.py[cod]
+*.so
+
+# Ignore virtual environments
+.env/
+.venv/
+venv/
+ENV/
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore IDE/editor config
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Ignore test outputs, cache
+checkpoints/
+outputs/
+runs/
+logs/
+cache/
+wandb/
+*.tensorboard/
+
+# If you're using Git LFS, exclude LFS-tracked files from regular Git
+*.lfs
+
+# Ignore specific directories
+training_log/
+viz/
+viz_newflow/
+visualization/
