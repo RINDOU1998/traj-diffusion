@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from diffusion_planner.utils.utils import TemporalData
 from diffusion_planner.utils.normalizer import StateNormalizer
-
+import torch.nn.functional as F
 
 """
 Training phase
@@ -70,9 +70,11 @@ def diffusion_loss_func(
     #     "diffusion_time": t,
     # }
     # NOTE calculate the loss from score from sampled history trajectory,complete 20 frames 
-    _, decoder_output ,y_hat, pi= model(inputs) # [B, 1 ,T, 2]
+
+    _, decoder_output ,y_hat, pi,_= model(inputs) # [B, 1 ,T, 2]
     
-   
+    # TODO use score[:,:,:19,:] to calculate the loss, keep the last frame and original heading
+
     # score = decoder_output["score"][:, :, 1:, :] # [B, P, T, 2]
     score = decoder_output["score"][:, :, :, :] # [B, P, T, 2]
     std = decoder_output["std"] 
@@ -82,6 +84,8 @@ def diffusion_loss_func(
         dpm_loss = torch.sum((score * std + z)**2, dim=-1)
     elif model_type == "x_start":
         dpm_loss = torch.sum((score - gt)**2, dim=-1)
+        # dpm_loss = F.mse_loss(score, gt, reduction='mean')
+        
     
     # masked_prediction_loss = dpm_loss[:, 1:, :][neighbors_future_valid]
 

@@ -58,12 +58,10 @@ def add_model_specific_args(parent_parser):
 def get_args():
     parser = argparse.ArgumentParser(description='Training')
     # HiVT args
-    parser.add_argument('--do_validation', type=bool, default=False , help='Run validation only instead of training')
     
-
     parser.add_argument('--root', type=str, required=True)
     #parser.add_argument('--val_root', type=str, required=True)
-    # parser.add_argument('--train_batch_size', type=int, default=64)
+    parser.add_argument('--train_batch_size', type=int, default=32)
     parser.add_argument('--val_batch_size', type=int, default=32)
     parser.add_argument('--shuffle', type=bool, default=True)
     #parser.add_argument('--num_workers', type=int, default=8)
@@ -115,16 +113,16 @@ def get_args():
     
     # Training
     parser.add_argument('--seed', type=int, help='fix random seed', default=3407)
-    parser.add_argument('--train_epochs', type=int, help='epochs of training', default=64)
+    parser.add_argument('--train_epochs', type=int, help='epochs of training', default=150)
     parser.add_argument('--save_utd', type=int, help='save frequency', default=20)
     parser.add_argument('--batch_size', type=int, help='batch size (default: 32)', default=32)
     parser.add_argument('--learning_rate', type=float, help='learning rate (default: 5e-4)', default=5e-4)
 
-    parser.add_argument('--warm_up_epoch', type=int, help='number of warm up', default=10)
+    parser.add_argument('--warm_up_epoch', type=int, help='number of warm up', default=5)
     parser.add_argument('--encoder_drop_path_rate', type=float, help='encoder drop out rate', default=0.1)
     parser.add_argument('--decoder_drop_path_rate', type=float, help='decoder drop out rate', default=0.1)
 
-    parser.add_argument('--alpha_recon', type=float, help='coefficient of diffusion reconstruction (default: 1.0)', default=1)
+    parser.add_argument('--alpha_planning_loss', type=float, help='coefficient of planning loss (default: 1.0)', default=1.0)
 
     parser.add_argument('--device', type=str, help='run on which device (default: cuda)', default='cuda')
 
@@ -156,7 +154,8 @@ def get_args():
     args.observation_normalizer = None
     return args
 
-def model_training(args):
+def model_validation(args):
+    global_rank, rank, _ = ddp.ddp_setup_universal(True, args)
 
     # init ddp
     #########################DDP set up distributed training#########################
@@ -231,27 +230,6 @@ def model_training(args):
     diffusion_planner = Traj_Diffusion(args)
     diffusion_planner = diffusion_planner.to(rank if args.device == 'cuda' else args.device)
 
-
-
-    if args.ddp:
-        diffusion_planner = DDP(diffusion_planner, device_ids=[rank])
-
-    if args.use_ema:
-        model_ema = ModelEma(
-            diffusion_planner,
-            decay=0.999,
-            device=args.device,
-        )
-    
-    if global_rank == 0:
-        print("Model Params: {}".format(sum(p.numel() for p in ddp.get_model(diffusion_planner, args.ddp).parameters())))
-
-    # optimizer
-    params = [{'params': ddp.get_model(diffusion_planner, args.ddp).parameters(), 'lr': args.learning_rate}]
-
-    optimizer = optim.AdamW(params)
-    scheduler = CosineAnnealingWarmUpRestarts(optimizer, train_epochs, args.warm_up_epoch)
-
     if args.resume_model_path is not None:
         print(f"Model loaded from {args.resume_model_path}")
         diffusion_planner, optimizer, scheduler, init_epoch, wandb_id, model_ema = resume_model(args.resume_model_path, diffusion_planner, optimizer, scheduler, model_ema, args.device)
@@ -262,25 +240,14 @@ def model_training(args):
     # logger
     wandb_logger = Logger(args.name, args.notes, args, wandb_resume_id=wandb_id, save_path=save_path, rank=global_rank) 
 
-    if args.ddp:
-        torch.distributed.barrier()
+    
 
-
-    best_k_models = []
-    K = args.save_top_k
-
-    # begin training
+    # begin validation
     for epoch in range(init_epoch, train_epochs):
-
-        # warm_up learning rate 
-
-        # if(epoch>args.warm_up_epoch):
-        #     args.alpha_recon = 0.01
-
         if global_rank == 0:
             print(f"Epoch {epoch+1}/{train_epochs}")
         train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args,  aug)
-        print("Train  Loss: ", train_loss)
+        
 
 
 
@@ -289,8 +256,7 @@ def model_training(args):
             lr_dict = {'lr': optimizer.param_groups[0]['lr']}
             wandb_logger.log_metrics({f"train_loss/{k}": v for k, v in train_loss.items()}, step=epoch+1)
             wandb_logger.log_metrics({f"lr/{k}": v for k, v in lr_dict.items()}, step=epoch+1)
-            print({f"train_loss/{k}": v for k, v in train_loss.items()} , "epoch: ", epoch+1)
-            print({f"lr/{k}": v for k, v in lr_dict.items()}, "epoch: ", epoch+1)
+
             # validation
             val_ade, val_fde, val_mr = validation_epoch(diffusion_planner, val_loader, args.device)
             wandb_logger.log_metrics({"val/ade": val_ade, "val/fde": val_fde, "val/mr": val_mr}, step=epoch+1)
@@ -311,42 +277,15 @@ def model_training(args):
         scheduler.step()
         #train_sampler.set_epoch(epoch + 1)
     
-    print("Training finished")
 
 
-def model_validation(args):
-    global_rank, rank, _ = ddp.ddp_setup_universal(True, args)
 
-    if global_rank == 0:
-        print(f"\n🧪 Running Validation for {args.name} on {args.device}")
-
-    val_set = ArgoverseV1Dataset(args.root, 'val', None, args.local_radius)
-    val_loader = DataLoader(val_set, batch_size=args.val_batch_size, shuffle=False,
-                            num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=False)
-    
-   
-
-    diffusion_planner = Traj_Diffusion(args).to(args.device)
-
-    if args.resume_model_path:
-        print(f"🔄 Loading checkpoint from: {args.resume_model_path}")
-        diffusion_planner, _, _, _, _, _ = resume_model(
-            args.resume_model_path, diffusion_planner, None, None, None, args.device
-        )
-    
-    # run validation
-    val_ade, val_fde, val_mr = validation_epoch(diffusion_planner, val_loader, args.device)
-
-    if global_rank == 0:
-        print(f"\n✅ Validation Metrics:\n - ADE: {val_ade:.4f}\n - FDE: {val_fde:.4f}\n - Miss Rate: {val_mr:.4f}")
-
-
+    print("Validation finished")
 
 
 if __name__ == "__main__":
-    args = get_args()
 
-    if args.do_validation:
-        model_validation(args)
-    else:
-        model_training(args)
+    args = get_args()
+    
+    # Run
+    model_validation(args)

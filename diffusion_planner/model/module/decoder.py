@@ -9,7 +9,7 @@ from diffusion_planner.model.diffusion_utils.sde import SDE, VPSDE_linear
 from diffusion_planner.utils.normalizer import StateNormalizer
 from diffusion_planner.model.module.mixer import MixerBlock
 from diffusion_planner.model.module.dit import TimestepEmbedder, DiTBlock, FinalLayer
-from diffusion_planner.utils.diffusion_helper import sample_av_history, extract_av_embeddings, extract_agent_type
+from diffusion_planner.utils.diffusion_helper import sample_agent_history,  extract_agent_type
 
 class Decoder(nn.Module):
     def __init__(self, config):
@@ -75,13 +75,13 @@ class Decoder(nn.Module):
 
         
         batch_vec = inputs.batch        
-        x_his = sample_av_history(inputs) # [B, 1, 20, 2]
+        x_his = sample_agent_history(inputs) # [B, 1, 20, 2]
 
         B = inputs.batch.max().item() + 1
         # NOTE instead of extract_av_embeddings, add class embedding into encoder_outputs and use all embedding and preproj x into same embedding space as encoder_outpus
         
         
-        agent_type = extract_agent_type(batch_vec, inputs.av_index, B)# [B*N] 0 for av ,  1 for others
+        agent_type = extract_agent_type(batch_vec, inputs.agent_index, B)# [B*N] 0 for av ,  1 for others
         type_embedding = self.agent_type_embed(agent_type)                 # [B*N, 2*D]
         encoding = encoder_outputs + type_embedding                        # [B*N, 2*D]
         
@@ -92,6 +92,8 @@ class Decoder(nn.Module):
         # DPM Sampler(do inference here, denoise the sampled noise with context guidance)
 
         # [B, 1 , 20 * 2]
+
+        # TODO: add last displacement to keep  heading
         xT = torch.cat([torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, 19:]], dim=2).reshape(B, P, -1)
 
         def initial_state_constraint(xt, t, step):
@@ -100,6 +102,7 @@ class Decoder(nn.Module):
         
       
         # TODO: modify sampler 
+         
         # x, t, cross_c, batch_vec
         t = torch.rand(B, device=x_his.device) * (1 - eps) + eps
         diffusion_time = t
@@ -118,6 +121,8 @@ class Decoder(nn.Module):
         
        
         x0 = x0.reshape(B, P, -1, 2) 
+        # TODO: replace the last frame displacement
+        
         
 
         
@@ -147,7 +152,7 @@ class Decoder(nn.Module):
                 }
         else:
             return {
-                    "prediction": x0
+                    "x0": x0
                 }
 
         

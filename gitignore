@@ -1,6 +1,0 @@
-# Ignore model parameter files
-*.pth
-*.pt
-*.ckpt
-*.h5
-training_log/

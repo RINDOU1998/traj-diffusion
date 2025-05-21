@@ -141,3 +141,60 @@ def init_weights(m: nn.Module) -> None:
                 nn.init.zeros_(param)
             elif 'bias_hh' in name:
                 nn.init.zeros_(param)
+
+
+def reconstruct_absolute_position_from_last_frame(x0, inputs, reverse_rotation = False):
+    """
+    Reconstruct absolute global positions of x0 (agent trajectory) by anchoring the last frame (t=19).
+
+    Args:
+        x0: torch.Tensor of shape [B,1, 20, 2], displacement-encoded trajectory relative to previous step
+        inputs: TemporalData batch with fields:
+            - inputs['positions']: original AV-centric absolute pos, shape [N, 50, 2]
+            - inputs['agent_index']: LongTensor of agent indices, shape [B]
+            - inputs['theta']: AV heading angle, shape [B]
+            - inputs['origin']: global origin position, shape [B, 2]
+
+    Returns:
+        global_hist: torch.Tensor of shape [B, 20, 2], absolute positions in global frame
+    """
+    x0 = x0.squeeze(1)  # [B, 20, 2]
+    B, T, _ = x0.shape
+    assert T == 20, "Expected 20 history frames"
+
+    # Step 1: Recover AV-centric absolute pos starting from last frame (t=19)
+    rel_hist = torch.zeros_like(x0)  # [B, 20, 2]
+    rel_hist[:, -1, :] = 0  # Last frame displacement = 0 by definition
+
+    # Reverse cumulative subtraction: x[t-1] = x[t] - disp[t]
+    for t in reversed(range(T - 1)):
+        rel_hist[:, t, :] = rel_hist[:, t + 1, :] - x0[:, t + 1, :]  # Displacement from t to t+1
+
+    # Step 2: Get agent last observed position in AV-centric frame
+    last_rot = inputs['positions'][inputs['agent_index'], 19]  # [B, 2]
+
+    # Step 3: Add anchor point to get AV-centric absolute trajectory
+    abs_rot = rel_hist + last_rot.unsqueeze(1)  # [B, 20, 2]
+
+
+    if reverse_rotation:
+        # Step 4: Construct inverse of AV-centric rotation matrix
+        theta = inputs['theta']  # [B]
+        cos_t = torch.cos(theta)
+        sin_t = torch.sin(theta)
+        scene_R = torch.stack([
+            torch.stack([cos_t, -sin_t], dim=1),
+            torch.stack([sin_t,  cos_t], dim=1)
+        ], dim=1)  # [B, 2, 2]
+        inv_scene_R = scene_R.transpose(1, 2)  # [B, 2, 2]
+
+        # Step 5: Rotate AV-centric trajectory back to global frame
+        global_rot = torch.bmm(abs_rot, inv_scene_R)  # [B, 20, 2]
+
+        # Step 6: Add AV global origin to obtain full global trajectory
+        origin = inputs['origin']  # [B, 2]
+        global_hist = global_rot + origin.unsqueeze(1)  # [B, 20, 2]
+        return global_hist
+    
+
+    return abs_rot

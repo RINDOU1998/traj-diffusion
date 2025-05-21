@@ -62,7 +62,7 @@ def resume_model(path: str, model, optimizer, scheduler, ema, device):
     """
     load ckpt from path
     """
-    path = os.path.join(path, 'latest.pth')
+    # path = os.path.join(path, 'latest.pth')
     ckpt = fileio.get(path)
     with io.BytesIO(ckpt) as f:
         ckpt = torch.load(f)

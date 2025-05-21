@@ -109,7 +109,8 @@ def train_epoch(data_loader, model, optimizer, args,  aug=None):
             )
            
             #loss['loss'] = loss['neighbor_prediction_loss'] + args.alpha_planning_loss * loss['ego_planning_loss']
-            loss['loss'] = loss["reconstruction_loss"] + loss['regression_loss'] + loss['classification_loss']
+
+            loss['loss'] =args.alpha_recon*loss["reconstruction_loss"] + loss['regression_loss'] + loss['classification_loss']
             # backward losses
             #loss['loss'] =  loss['regression_loss'] + loss['classification_loss']
             
