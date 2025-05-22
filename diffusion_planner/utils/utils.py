@@ -176,7 +176,6 @@ def reconstruct_absolute_position_from_last_frame(x0, inputs, reverse_rotation =
     # Step 3: Add anchor point to get AV-centric absolute trajectory
     abs_rot = rel_hist + last_rot.unsqueeze(1)  # [B, 20, 2]
 
-
     if reverse_rotation:
         # Step 4: Construct inverse of AV-centric rotation matrix
         theta = inputs['theta']  # [B]

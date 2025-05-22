@@ -93,8 +93,11 @@ class Decoder(nn.Module):
 
         # [B, 1 , 20 * 2]
 
-        # TODO: add last displacement to keep  heading
-        xT = torch.cat([torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, 19:]], dim=2).reshape(B, P, -1)
+        
+        #add last displacement to keep  heading
+        # xT = torch.cat([torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, 19,:]], dim=2).reshape(B, P, -1)
+
+        xT = torch.cat([ torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, -1, :].unsqueeze(2) ], dim=2).reshape(B, P, -1)
 
         def initial_state_constraint(xt, t, step):
             xt = xt.reshape(B, P, -1, 2)
@@ -121,8 +124,10 @@ class Decoder(nn.Module):
         
        
         x0 = x0.reshape(B, P, -1, 2) 
-        # TODO: replace the last frame displacement
-        
+        #keep the last frame displacement
+        x0[:, :, -1, :] = x_his[:, :, -1, :] # [B, P, 20, 2]
+
+
         
 
         

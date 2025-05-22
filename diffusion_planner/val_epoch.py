@@ -59,7 +59,7 @@ def validation_epoch(model, val_loader, device,show = True ):
     total_loss = 0.0
     total_batches = 0
 
-    save_base_dir = "/root/traj-diffusion/visualization/tra-diffusion-fixed_pos_heading"
+    save_base_dir = "/root/traj-diffusion/visualization/heading-fixed_MLP"
 
     batch_idx = 0
     for batch in tqdm(val_loader, desc="Validation", unit="batch"):

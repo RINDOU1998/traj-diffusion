@@ -73,13 +73,15 @@ def diffusion_loss_func(
 
     _, decoder_output ,y_hat, pi,_= model(inputs) # [B, 1 ,T, 2]
     
-    # TODO use score[:,:,:19,:] to calculate the loss, keep the last frame and original heading
+    
 
-    # score = decoder_output["score"][:, :, 1:, :] # [B, P, T, 2]
-    score = decoder_output["score"][:, :, :, :] # [B, P, T, 2]
+    # use score[:,:,:19,:] to calculate the loss, keep the last frame and original heading
+    score = decoder_output["score"][:, :, :19, :] # [B, P, T, 2] 
+    gt = decoder_output["gt"][:, :, :19, :] # [B, P, T, 2]
+    
     std = decoder_output["std"] 
     z = decoder_output["z"] 
-    gt = decoder_output["gt"] # [B, P, T, 2]
+   
     if model_type == "score":
         dpm_loss = torch.sum((score * std + z)**2, dim=-1)
     elif model_type == "x_start":

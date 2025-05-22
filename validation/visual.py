@@ -387,6 +387,18 @@ def viz_predictions(
     plt.plot(recon[ :, 0], recon[ :, 1], "--", color="#001AFF", linewidth=2, zorder=15)
     #plt.plot(recon[ -1, 0], recon[ -1, 1], "o", color="#001AFF", markersize=9, zorder=15)
 
+    # Draw arrow pointing to the last point of recon
+    x_end, y_end = recon[-1]
+    x_prev, y_prev = recon[-2]
+    dx, dy = x_end - x_prev, y_end - y_prev
+
+    plt.arrow(
+        x_end - dx * 0.5, y_end - dy * 0.5,  # start a bit before the end
+        dx * 0.5, dy * 0.5,                  # short arrow segment
+        head_width=0.5, head_length=0.8,
+        fc="#001AFF", ec="#001AFF",
+        linewidth=1.5, zorder=15, length_includes_head=True
+    )
 
     for i in range(num_tracks):
         # Plot observed trajectory
@@ -445,3 +457,5 @@ def viz_predictions(
         print(f"Plot saved to: {save_path}")
     if show:
         plt.show()
+    plt.close()  # Close the figure to free memory
+    print("ploting done>>>>>>>>>>")

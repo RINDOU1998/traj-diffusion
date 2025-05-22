@@ -43,6 +43,8 @@ class MLPReconstructor(nn.Module):
         x0 = x0.view(-1, self.history_steps, 2)                 # [B, 20, 2]
         x0.unsqueeze_(1)  # [B, 1, 20, 2]
         gt = inputs['x'][inputs['agent_index'], :,:2].unsqueeze(1)  # [B, 1, 20, 2]
+        # keep the last two frame pos and last displacement
+        x0[:, :, -1, :] = gt[:, :, -1, :] # [B, P, 20, 2]
         return  {
                     "score": x0,
                    

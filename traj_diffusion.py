@@ -80,33 +80,10 @@ class Traj_Diffusion(nn.Module):
         
         
         #######################################################################################################
-        # TODO: KEEP the heading 
-        # NOTE : recaluate the position of the agent, and also rotate angles form heading
-        # preserve position[19]
+        # NOTE : recaluate the position of the agent, and keep heading 
+        # preserve position[18] [19
         recal_his_pos = reconstruct_absolute_position_from_last_frame(x0, inputs2) #[B,20,2]
         inputs2['positions'][inputs2['agent_index'], :20] = recal_his_pos
-        # recalculate the heading angles
-        heading_vector = recal_his_pos[:, 19] - recal_his_pos[:, 18]  # [B, 2]
-        # protect against zero vector
-        epsilon = 1e-6
-        norms = torch.norm(heading_vector, dim=-1, keepdim=True)  # [B, 1]
-        is_zero = norms < epsilon
-        default_heading = torch.tensor([1.0, 0.0], device=heading_vector.device).expand_as(heading_vector)
-        heading_vector_safe = torch.where(is_zero, default_heading, heading_vector)      
-        rotate_angles = torch.atan2(heading_vector_safe[:, 1], heading_vector_safe[:, 0])  # [B]
-        inputs2['rotate_angles'][inputs2['agent_index']] = rotate_angles
-        # update the rotate matrix and rotated y
-        rotate_mat = inputs2.rotate_mat.clone()
-        agent_idx = inputs2.agent_index
-        sin_vals = torch.sin(inputs2.rotate_angles[agent_idx])
-        cos_vals = torch.cos(inputs2.rotate_angles[agent_idx])
-        rotate_mat[agent_idx, 0, 0] = cos_vals
-        rotate_mat[agent_idx, 0, 1] = -sin_vals
-        rotate_mat[agent_idx, 1, 0] = sin_vals
-        rotate_mat[agent_idx, 1, 1] = cos_vals
-        inputs2.rotate_mat = rotate_mat
-        # rotate the y
-        inputs2.y[agent_idx] = torch.bmm(inputs2.y[agent_idx], rotate_mat[agent_idx])
         ##############################################################################################
 
 
@@ -255,7 +232,6 @@ class Diffusion_Planner_Decoder(nn.Module):
         nn.init.constant_(self.decoder.dit.final_layer.proj[-1].bias, 0)
 
     def forward(self, encoder_outputs, inputs):
-        ## TODO convert TemporalData into valid inputs for diffusion decoder
         #inputs: Dict
         '''
         {
