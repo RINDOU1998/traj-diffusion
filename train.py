@@ -16,8 +16,9 @@ from diffusion_planner.utils.tb_log import TensorBoardLogger as Logger
 #from diffusion_planner.utils.data_augmentation import StatePerturbation
 #from diffusion_planner.utils.dataset import DiffusionPlannerData
 from diffusion_planner.utils import ddp
-from diffusion_planner.train_epoch import train_epoch
+# from diffusion_planner.train_epoch import train_epoch 
 from diffusion_planner.val_epoch import validation_epoch
+from diffusion_planner.train_epoch_2stage import train_epoch
 #from datamodules import ArgoverseV1DataModule
 from datasets import ArgoverseV1Dataset
 from traj_diffusion import Traj_Diffusion
@@ -114,13 +115,17 @@ def get_args():
     parser.set_defaults(pin_mem=True)
     
     # Training
+    parser.add_argument('--recon_epochs', type=int, default=64,
+                    help="# epochs to train reconstruction only")
+    parser.add_argument('--pred_epochs',  type=int, default=64,
+                    help="# epochs to train prediction only")
     parser.add_argument('--seed', type=int, help='fix random seed', default=3407)
-    parser.add_argument('--train_epochs', type=int, help='epochs of training', default=64)
+    parser.add_argument('--train_epochs', type=int, help='epochs of training', default=30)
     parser.add_argument('--save_utd', type=int, help='save frequency', default=20)
     parser.add_argument('--batch_size', type=int, help='batch size (default: 32)', default=32)
     parser.add_argument('--learning_rate', type=float, help='learning rate (default: 5e-4)', default=5e-4)
 
-    parser.add_argument('--warm_up_epoch', type=int, help='number of warm up', default=10)
+    parser.add_argument('--warm_up_epoch', type=int, help='number of warm up', default=1)
     parser.add_argument('--encoder_drop_path_rate', type=float, help='encoder drop out rate', default=0.1)
     parser.add_argument('--decoder_drop_path_rate', type=float, help='decoder drop out rate', default=0.1)
 
@@ -269,6 +274,28 @@ def model_training(args):
     best_k_models = []
     K = args.save_top_k
 
+    recon_losses = []
+    pred_losses = []
+    joint_losses = []
+
+        # Phase 1: reconstruction
+    if args.recon_epochs > 0:
+        diffusion_planner.set_stage("recon")
+        for e in range(args.recon_epochs):
+            print(f"[Recon] Epoch {e+1}/{args.recon_epochs}")
+            train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args)
+            recon_losses.append(train_total_loss)
+
+    # Phase 2: prediction head
+    if args.pred_epochs > 0:
+        diffusion_planner.set_stage("pred")
+        for e in range(args.pred_epochs):
+            print(f"[Pred] Epoch {e+1}/{args.pred_epochs}")
+            train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args)
+            pred_losses.append(train_total_loss)
+
+    # Phase 3: joint finetuning
+    diffusion_planner.set_stage("joint")
     # begin training
     for epoch in range(init_epoch, train_epochs):
 
@@ -280,10 +307,9 @@ def model_training(args):
         if global_rank == 0:
             print(f"Epoch {epoch+1}/{train_epochs}")
         train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args,  aug)
+        joint_losses.append(train_total_loss)
         print("Train  Loss: ", train_loss)
-
-
-
+        
         if global_rank == 0:
             #logging training
             lr_dict = {'lr': optimizer.param_groups[0]['lr']}
@@ -297,7 +323,12 @@ def model_training(args):
 
             if (epoch+1) % args.save_utd == 0:
                 # save model at the end of epoch
-                save_model(diffusion_planner, optimizer, scheduler, save_path, epoch, train_total_loss, wandb_logger.id)
+                train_losses = {
+                    'joint_losses': joint_losses,
+                    'recon_losses': recon_losses,
+                    'pred_losses': pred_losses
+                }
+                save_model(diffusion_planner, optimizer, scheduler, save_path, epoch, train_losses, wandb_logger.id)
                 print(f"Model saved in {save_path}\n")
             else:
                 # Save top-k model by ADE

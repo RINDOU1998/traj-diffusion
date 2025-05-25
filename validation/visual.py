@@ -375,7 +375,7 @@ def viz_predictions(
     """
     assert input_.shape[0] == len(centerlines) == len(city_names)
     print("ploting>>>>>>>>>>")
-    print(len(output[0]))
+    # print(len(output[0]))
     num_tracks = input_.shape[0]
     obs_len = input_.shape[1]
     pred_len = target.shape[1]

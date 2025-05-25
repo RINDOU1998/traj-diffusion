@@ -73,7 +73,7 @@ class Decoder(nn.Module):
         # print("Inputs AV Index:", inputs.av_index)
         # print("inputs.agent_id",inputs.agent_index)
 
-        
+        # TODO : do global reconstruction in separate training
         batch_vec = inputs.batch        
         x_his = sample_agent_history(inputs) # [B, 1, 20, 2]
 

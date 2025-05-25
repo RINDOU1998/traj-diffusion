@@ -49,7 +49,7 @@ class MR(Metric):
 
 
 @torch.no_grad()
-def validation_epoch(model, val_loader, device,show = True ):
+def validation_epoch(model, val_loader, device,show = False ):
     model.eval()
 
     ade_metric = ADE().to(device)

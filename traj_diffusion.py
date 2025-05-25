@@ -35,7 +35,12 @@ class Traj_Diffusion(nn.Module):
         self.cls_loss = SoftTargetCrossEntropyLoss(reduction='mean')
 
         # separate encoder for training
-        #self.diffusion_encoder =  HiVT_Encoder(config)
+        self.diffusion_encoder =  HiVT_Encoder(config)
+
+    def set_stage(self, stage: str):
+        assert stage in ("recon", "pred", "joint")
+        self.stage = stage
+
 
     @property
     def sde(self):
@@ -61,9 +66,26 @@ class Traj_Diffusion(nn.Module):
 
 
         # 2) Shared encoder + diffusion decoder to get x0
-        encoder_outputs, _, _ = self.encoder(inputs)
-        #encoder_outputs, _, _ = self.diffusion_encoder(inputs)
+        #encoder_outputs, _, _ = self.encoder(inputs)
+        
 
+
+        # Recon stage only: produce x0 and return
+        if self.stage == "recon":
+            encoder_outputs, _, _ = self.diffusion_encoder(inputs)
+            decoder_outputs = self.decoder(encoder_outputs, inputs)
+            x0 = decoder_outputs["x0"].squeeze(1)  # [B, T, 2]
+            return x0, decoder_outputs
+        
+        # Prediction‐only stage: skip diffusion decoder,
+        # feed *ground‐truth* inputs.x into prediction head
+        if self.stage == "pred":
+            # re-encode original history
+            _, local_embed, global_embed = self.encoder(inputs)
+            y_hat, pi = self.pred_decoder(local_embed, global_embed)
+            return y_hat, pi
+        
+        encoder_outputs, _, _ = self.diffusion_encoder(inputs)
         decoder_outputs = self.decoder(encoder_outputs, inputs)
         x0 = decoder_outputs['x0'].squeeze(1)  # [B, T, 2]
         

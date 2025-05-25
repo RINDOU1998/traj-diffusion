@@ -71,39 +71,51 @@ def diffusion_loss_func(
     # }
     # NOTE calculate the loss from score from sampled history trajectory,complete 20 frames 
 
-    _, decoder_output ,y_hat, pi,_= model(inputs) # [B, 1 ,T, 2]
+    decoder_output = {}
     
+    if model.stage == "recon":
+        x0, decoder_output = model(inputs)
     
+    if model.stage == "pred":
+        y_hat, pi = model(inputs)
 
-    # use score[:,:,:19,:] to calculate the loss, keep the last frame and original heading
-    score = decoder_output["score"][:, :, :19, :] # [B, P, T, 2] 
-    gt = decoder_output["gt"][:, :, :19, :] # [B, P, T, 2]
-    
-    std = decoder_output["std"] 
-    z = decoder_output["z"] 
-   
-    if model_type == "score":
-        dpm_loss = torch.sum((score * std + z)**2, dim=-1)
-    elif model_type == "x_start":
-        dpm_loss = torch.sum((score - gt)**2, dim=-1)
-        # dpm_loss = F.mse_loss(score, gt, reduction='mean')
+    if model.stage == "joint":  
+        _, decoder_output ,y_hat, pi,_= model(inputs) # [B, 1 ,T, 2]
+
+    # TODO: add reconstruction for global  trajectories
+
+    if model.stage == "recon" or model.stage == "joint":
+        # use score[:,:,:19,:] to calculate the loss, keep the last frame and original heading
+        score = decoder_output["score"][:, :, :19, :] # [B, P, T, 2] 
+        gt = decoder_output["gt"][:, :, :19, :] # [B, P, T, 2]
         
+        std = decoder_output["std"] 
+        z = decoder_output["z"] 
     
-    # masked_prediction_loss = dpm_loss[:, 1:, :][neighbors_future_valid]
+        if model_type == "score":
+            dpm_loss = torch.sum((score * std + z)**2, dim=-1)
+        elif model_type == "x_start":
+            dpm_loss = torch.sum((score - gt)**2, dim=-1)
+            # dpm_loss = F.mse_loss(score, gt, reduction='mean')
+            
+        
+        # masked_prediction_loss = dpm_loss[:, 1:, :][neighbors_future_valid]
 
-    # if masked_prediction_loss.numel() > 0:
-    #     loss["neighbor_prediction_loss"] = masked_prediction_loss.mean()
-    # else:
-    #     loss["neighbor_prediction_loss"] = torch.tensor(0.0, device=masked_prediction_loss.device)
+        # if masked_prediction_loss.numel() > 0:
+        #     loss["neighbor_prediction_loss"] = masked_prediction_loss.mean()
+        # else:
+        #     loss["neighbor_prediction_loss"] = torch.tensor(0.0, device=masked_prediction_loss.device)
 
-    # loss["ego_planning_loss"] = dpm_loss[:, 0, :].mean()
+        # loss["ego_planning_loss"] = dpm_loss[:, 0, :].mean()
 
-    loss["reconstruction_loss"] = dpm_loss.mean()
-    assert not torch.isnan(dpm_loss).sum(), f"loss cannot be nan, z={z}"
+        loss["reconstruction_loss"] = dpm_loss.mean()
+        assert not torch.isnan(dpm_loss).sum(), f"loss cannot be nan, z={z}"
 
-    combined_loss, reg_loss, cls_loss = model.compute_loss(y_hat, pi, inputs)
-    loss['regression_loss'] = reg_loss
-    loss['classification_loss'] = cls_loss
+
+    if model.stage == "pred" or model.stage == "joint":
+        combined_loss, reg_loss, cls_loss = model.compute_loss(y_hat, pi, inputs)
+        loss['regression_loss'] = reg_loss
+        loss['classification_loss'] = cls_loss
     # prediction loss
     
 
