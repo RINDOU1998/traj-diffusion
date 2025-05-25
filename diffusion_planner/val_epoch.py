@@ -49,7 +49,7 @@ class MR(Metric):
 
 
 @torch.no_grad()
-def validation_epoch(model, val_loader, device,show = True ):
+def validation_epoch(model, val_loader, device,show = False ):
     model.eval()
 
     ade_metric = ADE().to(device)
@@ -59,7 +59,7 @@ def validation_epoch(model, val_loader, device,show = True ):
     total_loss = 0.0
     total_batches = 0
 
-    save_base_dir = "/root/traj-diffusion/visualization/heading-fixed_MLP"
+    save_base_dir = "/root/traj-diffusion/visualization/latest_MLP"
 
     batch_idx = 0
     for batch in tqdm(val_loader, desc="Validation", unit="batch"):

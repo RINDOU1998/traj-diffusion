@@ -1,0 +1,1 @@
+python train.py --root /root/dataset --resume_model_path /root/traj-diffusion/training_log/diffusion-planner-training/2025-05-21-16:40:23/model_epoch_61_trainloss_1.7834.pth --embed_dim 128 --do_validation 1  --diffusion_model_type x_start --val_batch_size 32
