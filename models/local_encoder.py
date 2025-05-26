@@ -32,6 +32,68 @@ from diffusion_planner.utils.utils import TemporalData
 from diffusion_planner.utils.utils import init_weights
 
 
+class customEncoder(nn.Module):
+
+    def __init__(self,
+                 historical_steps: int,
+                 node_dim: int,
+                 edge_dim: int,
+                 embed_dim: int,
+                 num_heads: int = 8,
+                 dropout: float = 0.1,
+                 num_temporal_layers: int = 4,
+                 local_radius: float = 50,
+                 parallel: bool = False) -> None:
+        super(customEncoder, self).__init__()
+        self.historical_steps = historical_steps
+        self.parallel = parallel
+
+        self.drop_edge = DistanceDropEdge(local_radius)
+        self.aa_encoder = AAEncoder(historical_steps=historical_steps,
+                                    node_dim=node_dim,
+                                    edge_dim=edge_dim,
+                                    embed_dim=embed_dim,
+                                    num_heads=num_heads,
+                                    dropout=dropout,
+                                    parallel=parallel)
+        self.temporal_encoder = TemporalEncoder(historical_steps=historical_steps,
+                                                embed_dim=embed_dim,
+                                                num_heads=num_heads,
+                                                dropout=dropout,
+                                                num_layers=num_temporal_layers)
+   
+    def forward(self, data: TemporalData) -> torch.Tensor:
+        for t in range(self.historical_steps):
+            data[f'edge_index_{t}'], _ = subgraph(subset=~data['padding_mask'][:, t], edge_index=data.edge_index)
+            data[f'edge_attr_{t}'] = \
+                data['positions'][data[f'edge_index_{t}'][0], t] - data['positions'][data[f'edge_index_{t}'][1], t]
+        if self.parallel:
+            snapshots = [None] * self.historical_steps
+            for t in range(self.historical_steps):
+                edge_index, edge_attr = self.drop_edge(data[f'edge_index_{t}'], data[f'edge_attr_{t}'])
+                snapshots[t] = Data(x=data.x[:, t], edge_index=edge_index, edge_attr=edge_attr,
+                                    num_nodes=data.num_nodes)
+            batch = Batch.from_data_list(snapshots)
+            out = self.aa_encoder(x=batch.x, t=None, edge_index=batch.edge_index, edge_attr=batch.edge_attr,
+                                  bos_mask=data['bos_mask'], rotate_mat=data['rotate_mat'])
+            out = out.view(self.historical_steps, out.shape[0] // self.historical_steps, -1)
+        else:
+            out = [None] * self.historical_steps
+            for t in range(self.historical_steps):
+                edge_index, edge_attr = self.drop_edge(data[f'edge_index_{t}'], data[f'edge_attr_{t}'])
+                out[t] = self.aa_encoder(x=data.x[:, t], t=t, edge_index=edge_index, edge_attr=edge_attr,
+                                         bos_mask=data['bos_mask'][:, t], rotate_mat=data['rotate_mat'])
+            out = torch.stack(out)  # [T, N, D]
+        #out = self.temporal_encoder(x=out, padding_mask=data['padding_mask'][:, : self.historical_steps])
+        # edge_index, edge_attr = self.drop_edge(data['lane_actor_index'], data['lane_actor_vectors'])
+        # out = self.al_encoder(x=(data['lane_vectors'], out), edge_index=edge_index, edge_attr=edge_attr,
+        #                       is_intersections=data['is_intersections'], turn_directions=data['turn_directions'],
+        #                       traffic_controls=data['traffic_controls'], rotate_mat=data['rotate_mat'])
+        out = out.permute(1, 0, 2)
+        return out
+
+
+
 class LocalEncoder(nn.Module):
 
     def __init__(self,

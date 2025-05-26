@@ -6,6 +6,7 @@ from diffusion_planner.model.module.decoder import Decoder
 from diffusion_planner.utils.utils import reconstruct_absolute_position_from_last_frame
 from models import GlobalInteractor
 from models import LocalEncoder
+from models import customEncoder
 from models import MLPDecoder
 from diffusion_planner.utils.utils import TemporalData
 from copy import deepcopy
@@ -21,9 +22,9 @@ class Traj_Diffusion(nn.Module):
         super().__init__()
 
         self.encoder = HiVT_Encoder(config)
-        self.decoder = Diffusion_Planner_Decoder(config)
+        #self.decoder = Diffusion_Planner_Decoder(config)
         # MLP decoder for X_0 recon
-        # self.decoder = MLPReconstructor(local_channels=config.embed_dim,global_channels=config.embed_dim)
+        self.decoder = MLPReconstructor(local_channels=config.embed_dim,global_channels=config.embed_dim)
         self.pred_decoder = MLPDecoder(local_channels=config.embed_dim,
                                   global_channels=config.embed_dim,
                                   future_steps=config.future_steps,
@@ -35,7 +36,7 @@ class Traj_Diffusion(nn.Module):
         self.cls_loss = SoftTargetCrossEntropyLoss(reduction='mean')
 
         # separate encoder for training
-        self.diffusion_encoder =  HiVT_Encoder(config)
+        self.diffusion_encoder =  Customized_Encoder(config)
 
     def set_stage(self, stage: str):
         assert stage in ("recon", "pred", "joint")
@@ -71,9 +72,16 @@ class Traj_Diffusion(nn.Module):
 
 
         # Recon stage only: produce x0 and return
+        # if self.stage == "recon":
+        #     encoder_outputs, _, _ = self.diffusion_encoder(inputs)
+        #     decoder_outputs = self.decoder(encoder_outputs, inputs)
+        #     x0 = decoder_outputs["x0"].squeeze(1)  # [B, T, 2]
+        #     return x0, decoder_outputs
         if self.stage == "recon":
-            encoder_outputs, _, _ = self.diffusion_encoder(inputs)
-            decoder_outputs = self.decoder(encoder_outputs, inputs)
+            local_embedding = self.diffusion_encoder(inputs)
+            decoder_outputs = self.decoder(local_embedding, inputs)
+            import pdb
+            pdb.set_trace()
             x0 = decoder_outputs["x0"].squeeze(1)  # [B, T, 2]
             return x0, decoder_outputs
         
@@ -270,7 +278,54 @@ class Diffusion_Planner_Decoder(nn.Module):
         decoder_outputs = self.decoder(encoder_outputs, inputs)
         
         return decoder_outputs
-    
+
+
+class Customized_Encoder(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+
+        self.device = torch.device(config.device)
+
+        self.historical_steps = config.historical_steps
+        self.future_steps = config.future_steps
+        self.num_modes = config.num_modes
+        self.rotate = config.rotate
+        # self.parallel = config.parallel
+        # self.lr = config.lr
+        # self.weight_decay = config.weight_decay
+        # self.T_max = config.T_max
+        self.local_encoder = customEncoder(historical_steps=config.historical_steps,
+                                          node_dim=config.node_dim,
+                                          edge_dim=config.edge_dim,
+                                          embed_dim=config.embed_dim,
+                                          num_heads=config.num_heads,
+                                          dropout=config.dropout,
+                                          num_temporal_layers=config.num_temporal_layers,
+                                          local_radius=config.local_radius,
+                                          parallel=config.parallel)
+        self.initialize_weights()
+
+    #initialize weights of the model
+    def initialize_weights(self):
+        # Initialize transformer layers:
+        def _basic_init(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight)
+                if isinstance(m, nn.Linear) and m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.LayerNorm):
+                nn.init.constant_(m.bias, 0)
+                nn.init.constant_(m.weight, 1.0)
+            elif isinstance(m, nn.Embedding):
+                nn.init.normal_(m.weight, mean=0.0, std=0.02)
+        self.apply(_basic_init)
+
+    def forward(self, data: TemporalData):
+        # NOTE avoid rotate again if already rotated
+        
+        local_embed = self.local_encoder(data=data)
+        # print("local_embed shape: ", local_embed.shape)
+        return local_embed
 
 # HiVT hyperparameters
 # @staticmethod

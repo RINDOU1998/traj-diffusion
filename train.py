@@ -278,12 +278,13 @@ def model_training(args):
     pred_losses = []
     joint_losses = []
 
-        # Phase 1: reconstruction
+    # Phase 1: reconstruction
     if args.recon_epochs > 0:
         diffusion_planner.set_stage("recon")
         for e in range(args.recon_epochs):
             print(f"[Recon] Epoch {e+1}/{args.recon_epochs}")
             train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args)
+            wandb_logger.log_metrics({f"train_loss/{k}": v for k, v in train_loss.items()}, step=e+1)
             recon_losses.append(train_total_loss)
 
     # Phase 2: prediction head
@@ -366,10 +367,10 @@ def model_validation(args):
         )
     
     # run validation
-    val_ade, val_fde, val_mr = validation_epoch(diffusion_planner, val_loader, args.device)
+    val_ade, val_fde, val_mr, rec_loss = validation_epoch(diffusion_planner, val_loader, args.device)
 
     if global_rank == 0:
-        print(f"\n✅ Validation Metrics:\n - ADE: {val_ade:.4f}\n - FDE: {val_fde:.4f}\n - Miss Rate: {val_mr:.4f}")
+        print(f"\n✅ Validation Metrics:\n - ADE: {val_ade:.4f}\n - FDE: {val_fde:.4f}\n - Miss Rate: {val_mr:.4f} - Reconstruction Loss: {rec_loss:.4f}")
 
 
 

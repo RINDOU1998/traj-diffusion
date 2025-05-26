@@ -22,3 +22,4 @@ from models.local_encoder import ALEncoder
 from models.local_encoder import LocalEncoder
 from models.local_encoder import TemporalEncoder
 from models.local_encoder import TemporalEncoderLayer
+from models.local_encoder import customEncoder

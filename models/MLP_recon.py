@@ -12,7 +12,7 @@ class MLPReconstructor(nn.Module):
                  global_channels: int,
                  history_steps: int = 20):
         super(MLPReconstructor, self).__init__()
-        self.input_dim = local_channels + global_channels
+        self.input_dim = local_channels 
         self.history_steps = history_steps
 
         self.mlp = nn.Sequential(
@@ -22,7 +22,7 @@ class MLPReconstructor(nn.Module):
             nn.Linear(self.input_dim, self.input_dim),
             nn.LayerNorm(self.input_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(self.input_dim, history_steps * 2)  # [B, 20*2]
+            nn.Linear(self.input_dim,  2)  # [B, 20*2]
         )
 
         self.apply(init_weights)
@@ -38,13 +38,22 @@ class MLPReconstructor(nn.Module):
 
         """
 
-        agent_embed = encoder_outputs[inputs['agent_index'], :] # [B,D ]
-        x0 = self.mlp(agent_embed)                                    # [B, 40]
-        x0 = x0.view(-1, self.history_steps, 2)                 # [B, 20, 2]
+        # agent_embed = encoder_outputs[inputs['agent_index'], :] # [B,D]
+        # x0 = self.mlp(agent_embed)                                    # [B, 40]
+        # x0 = x0.view(-1, self.history_steps, 2)                 # [B, 20, 2]
+        # x0.unsqueeze_(1)  # [B, 1, 20, 2]
+        # gt = inputs['x'][inputs['agent_index'], :,:2].unsqueeze(1)  # [B, 1, 20, 2]
+        # # keep the last two frame pos and last displacement
+        # x0[:, :, -1, :] = gt[:, :, -1, :] # [B, P, 20, 2]
+        
+        agent_embed = encoder_outputs[inputs['agent_index'], :] # [B,T,D ]
+        x0 = self.mlp(agent_embed)                                    # [B, T,2]
+        # x0 = x0.view(-1, self.history_steps, 2)                 # [B, 20, 2]
         x0.unsqueeze_(1)  # [B, 1, 20, 2]
         gt = inputs['x'][inputs['agent_index'], :,:2].unsqueeze(1)  # [B, 1, 20, 2]
         # keep the last two frame pos and last displacement
         x0[:, :, -1, :] = gt[:, :, -1, :] # [B, P, 20, 2]
+
         return  {
                     "score": x0,
                    

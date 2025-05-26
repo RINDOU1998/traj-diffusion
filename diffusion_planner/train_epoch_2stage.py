@@ -13,7 +13,7 @@ def train_epoch(data_loader, model, optimizer, args, aug=None):
 
     epoch_losses = []
     pbar = tqdm(data_loader, desc="Training", unit="batch")
-    for batch in pbar:
+    for batch in pbar: 
         batch = batch.to(args.device)
         optimizer.zero_grad()
 
