@@ -16,13 +16,12 @@ from models.MLP_recon import MLPReconstructor
 import torch.nn.functional as F
 import copy
 
-
 class Traj_Diffusion(nn.Module):
     def __init__(self, config):
         super().__init__()
 
         self.encoder = HiVT_Encoder(config)
-        #self.decoder = Diffusion_Planner_Decoder(config)
+        # self.decoder = Diffusion_Planner_Decoder(config)
         # MLP decoder for X_0 recon
         self.decoder = MLPReconstructor(local_channels=config.embed_dim,global_channels=config.embed_dim)
         self.pred_decoder = MLPDecoder(local_channels=config.embed_dim,
@@ -37,6 +36,7 @@ class Traj_Diffusion(nn.Module):
 
         # separate encoder for training
         self.diffusion_encoder =  Customized_Encoder(config)
+
 
     def set_stage(self, stage: str):
         assert stage in ("recon", "pred", "joint")
@@ -80,8 +80,7 @@ class Traj_Diffusion(nn.Module):
         if self.stage == "recon":
             local_embedding = self.diffusion_encoder(inputs)
             decoder_outputs = self.decoder(local_embedding, inputs)
-            import pdb
-            pdb.set_trace()
+            
             x0 = decoder_outputs["x0"].squeeze(1)  # [B, T, 2]
             return x0, decoder_outputs
         

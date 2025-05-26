@@ -18,6 +18,7 @@ from diffusion_planner.utils.tb_log import TensorBoardLogger as Logger
 from diffusion_planner.utils import ddp
 # from diffusion_planner.train_epoch import train_epoch 
 from diffusion_planner.val_epoch import validation_epoch
+from diffusion_planner.rec_val_epoch import validation_epoch as rec_validation_epoch
 from diffusion_planner.train_epoch_2stage import train_epoch
 #from datamodules import ArgoverseV1DataModule
 from datasets import ArgoverseV1Dataset
@@ -286,6 +287,10 @@ def model_training(args):
             train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args)
             wandb_logger.log_metrics({f"train_loss/{k}": v for k, v in train_loss.items()}, step=e+1)
             recon_losses.append(train_total_loss)
+            ade  = rec_validation_epoch(diffusion_planner, val_loader, args.device)
+            wandb_logger.log_metrics({"val/ade": ade}, step=e+1)
+            
+
 
     # Phase 2: prediction head
     if args.pred_epochs > 0:

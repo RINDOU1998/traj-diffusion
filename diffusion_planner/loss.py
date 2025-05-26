@@ -86,8 +86,8 @@ def diffusion_loss_func(
 
     if model.stage == "recon" or model.stage == "joint":
         # use score[:,:,:19,:] to calculate the loss, keep the last frame and original heading
-        score = decoder_output["score"][:, :, :19, :] # [B, P, T, 2] 
-        gt = decoder_output["gt"][:, :, :19, :] # [B, P, T, 2]
+        score = decoder_output["score"][:,  :19, :] # [B, P, T, 2] 
+        gt = decoder_output["gt"][:, :19, :] # [B, P, T, 2]
         
         std = decoder_output["std"] 
         z = decoder_output["z"] 
@@ -95,10 +95,13 @@ def diffusion_loss_func(
         if model_type == "score":
             dpm_loss = torch.sum((score * std + z)**2, dim=-1)
         elif model_type == "x_start":
-            dpm_loss = torch.sum((score - gt)**2, dim=-1)
+            dpm_loss = (score - gt)**2
+            dpm_loss = dpm_loss.mean()
+
+            # dpm_loss = torch.sum((score - gt)**2, dim=-1)
             # dpm_loss = F.mse_loss(score, gt, reduction='mean')
             
-        
+        loss["reconstruction_loss"] = dpm_loss.mean()
         # masked_prediction_loss = dpm_loss[:, 1:, :][neighbors_future_valid]
 
         # if masked_prediction_loss.numel() > 0:
@@ -108,10 +111,10 @@ def diffusion_loss_func(
 
         # loss["ego_planning_loss"] = dpm_loss[:, 0, :].mean()
 
-        loss["reconstruction_loss"] = dpm_loss.mean()
+        
         assert not torch.isnan(dpm_loss).sum(), f"loss cannot be nan, z={z}"
-
-
+# x (20, 2)
+# gt(20, 2)
     if model.stage == "pred" or model.stage == "joint":
         combined_loss, reg_loss, cls_loss = model.compute_loss(y_hat, pi, inputs)
         loss['regression_loss'] = reg_loss

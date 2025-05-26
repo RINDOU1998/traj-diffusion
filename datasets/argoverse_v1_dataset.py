@@ -63,7 +63,9 @@ class ArgoverseV1Dataset(Dataset):
 
     @property
     def processed_dir(self) -> str:
-        return os.path.join(self.root, self._directory, 'processed_0526_debug')
+        # return os.path.join(self.root, self._directory, 'processed_0526_debug')
+        return os.path.join(self.root, self._directory, 'processed')
+
 
     @property
     def raw_file_names(self) -> Union[str, List[str], Tuple]:
@@ -145,8 +147,7 @@ def process_argoverse(split: str,
     # bos_mask is True if time step t is valid and time step t-1 is invalid
     bos_mask[:, 0] = ~padding_mask[:, 0]
     bos_mask[:, 1: 20] = padding_mask[:, : 19] & ~padding_mask[:, 1: 20]
-    import pdb
-    pdb.set_trace()
+   
     positions = x.clone()
     x[:, 20:] = torch.where((padding_mask[:, 19].unsqueeze(-1) | padding_mask[:, 20:]).unsqueeze(-1),
                             torch.zeros(num_nodes, 30, 2),

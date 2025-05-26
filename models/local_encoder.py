@@ -47,7 +47,8 @@ class customEncoder(nn.Module):
         super(customEncoder, self).__init__()
         self.historical_steps = historical_steps
         self.parallel = parallel
-
+        self.node_dim = node_dim
+        self.embed_dim = embed_dim
         self.drop_edge = DistanceDropEdge(local_radius)
         self.aa_encoder = AAEncoder(historical_steps=historical_steps,
                                     node_dim=node_dim,
@@ -60,36 +61,67 @@ class customEncoder(nn.Module):
                                                 embed_dim=embed_dim,
                                                 num_heads=num_heads,
                                                 dropout=dropout,
-                                                num_layers=num_temporal_layers)
-   
+                                                num_layers=4)
+        
+        self.temporal_enc = nn.LSTM(input_size=node_dim,
+                                   hidden_size=embed_dim,
+                                   num_layers=1,
+                                   batch_first=True,
+                                   dropout=dropout
+                                   )
+        
+        self.identity = nn.Sequential(
+            nn.Linear(self.embed_dim, self.embed_dim),
+            nn.LayerNorm(self.embed_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(self.embed_dim, self.embed_dim),
+            nn.LayerNorm(self.embed_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(self.embed_dim,  self.node_dim)  # [B, 20*2]
+        )
+        
     def forward(self, data: TemporalData) -> torch.Tensor:
-        for t in range(self.historical_steps):
-            data[f'edge_index_{t}'], _ = subgraph(subset=~data['padding_mask'][:, t], edge_index=data.edge_index)
-            data[f'edge_attr_{t}'] = \
-                data['positions'][data[f'edge_index_{t}'][0], t] - data['positions'][data[f'edge_index_{t}'][1], t]
-        if self.parallel:
-            snapshots = [None] * self.historical_steps
-            for t in range(self.historical_steps):
-                edge_index, edge_attr = self.drop_edge(data[f'edge_index_{t}'], data[f'edge_attr_{t}'])
-                snapshots[t] = Data(x=data.x[:, t], edge_index=edge_index, edge_attr=edge_attr,
-                                    num_nodes=data.num_nodes)
-            batch = Batch.from_data_list(snapshots)
-            out = self.aa_encoder(x=batch.x, t=None, edge_index=batch.edge_index, edge_attr=batch.edge_attr,
-                                  bos_mask=data['bos_mask'], rotate_mat=data['rotate_mat'])
-            out = out.view(self.historical_steps, out.shape[0] // self.historical_steps, -1)
-        else:
-            out = [None] * self.historical_steps
-            for t in range(self.historical_steps):
-                edge_index, edge_attr = self.drop_edge(data[f'edge_index_{t}'], data[f'edge_attr_{t}'])
-                out[t] = self.aa_encoder(x=data.x[:, t], t=t, edge_index=edge_index, edge_attr=edge_attr,
-                                         bos_mask=data['bos_mask'][:, t], rotate_mat=data['rotate_mat'])
-            out = torch.stack(out)  # [T, N, D]
-        #out = self.temporal_encoder(x=out, padding_mask=data['padding_mask'][:, : self.historical_steps])
+        # for t in range(self.historical_steps):
+        #     data[f'edge_index_{t}'], _ = subgraph(subset=~data['padding_mask'][:, t], edge_index=data.edge_index)
+        #     data[f'edge_attr_{t}'] = \
+        #         data['positions'][data[f'edge_index_{t}'][0], t] - data['positions'][data[f'edge_index_{t}'][1], t]
+        # if self.parallel:
+        #     snapshots = [None] * self.historical_steps
+        #     for t in range(self.historical_steps):
+        #         edge_index, edge_attr = self.drop_edge(data[f'edge_index_{t}'], data[f'edge_attr_{t}'])
+        #         snapshots[t] = Data(x=data.x[:, t], edge_index=edge_index, edge_attr=edge_attr,
+        #                             num_nodes=data.num_nodes)
+        #     batch = Batch.from_data_list(snapshots)
+        #     out = self.aa_encoder(x=batch.x, t=None, edge_index=batch.edge_index, edge_attr=batch.edge_attr,
+        #                           bos_mask=data['bos_mask'], rotate_mat=data['rotate_mat'])
+        #     out = out.view(self.historical_steps, out.shape[0] // self.historical_steps, -1)
+        # else:
+        #     out = [None] * self.historical_steps
+        #     for t in range(self.historical_steps):
+        #         edge_index, edge_attr = self.drop_edge(data[f'edge_index_{t}'], data[f'edge_attr_{t}'])
+        #         out[t] = self.aa_encoder(x=data.x[:, t], t=t, edge_index=edge_index, edge_attr=edge_attr,
+        #                                  bos_mask=data['bos_mask'][:, t], rotate_mat=data['rotate_mat'])
+        #     out = torch.stack(out)  # [T, N, D]
+
+        input_x = data.x # (N, 20, 2) 
+        import pdb
+        # pdb.set_trace()
+
+        # input_x = self.temporal_enc(input_x)[0] # [N,D] LSTM
+
+        input_x = self.temporal_encoder(x=input_x, padding_mask=data['padding_mask'][:, : self.historical_steps]) # (N, 20, D)
+        input_x = input_x.permute(1, 0, 2) # (N, 20, D)
+        
+        
+        out = self.identity(input_x) # (N, 20, 2)
+        # out = self.temporal_encoder(x=input_x, padding_mask=data['padding_mask'][:, : self.historical_steps]) #(809, 128)
+
         # edge_index, edge_attr = self.drop_edge(data['lane_actor_index'], data['lane_actor_vectors'])
         # out = self.al_encoder(x=(data['lane_vectors'], out), edge_index=edge_index, edge_attr=edge_attr,
         #                       is_intersections=data['is_intersections'], turn_directions=data['turn_directions'],
         #                       traffic_controls=data['traffic_controls'], rotate_mat=data['rotate_mat'])
-        out = out.permute(1, 0, 2)
+        # out = out.permute(1, 0, 2)
+
         return out
 
 
@@ -290,12 +322,13 @@ class TemporalEncoder(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=num_layers,
                                                          norm=nn.LayerNorm(embed_dim))
         self.padding_token = nn.Parameter(torch.Tensor(historical_steps, 1, embed_dim))
-        self.cls_token = nn.Parameter(torch.Tensor(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(torch.Tensor(historical_steps + 1, 1, embed_dim))
-        attn_mask = self.generate_square_subsequent_mask(historical_steps + 1)
+        # self.cls_token = nn.Parameter(torch.Tensor(1, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.Tensor(historical_steps, 1, embed_dim))
+        self.center_embed = SingleInputEmbedding(in_channel=2, out_channel=embed_dim)
+        attn_mask = self.generate_square_subsequent_mask(historical_steps)
         self.register_buffer('attn_mask', attn_mask)
         nn.init.normal_(self.padding_token, mean=0., std=.02)
-        nn.init.normal_(self.cls_token, mean=0., std=.02)
+        # nn.init.normal_(self.cls_token, mean=0., std=.02)
         nn.init.normal_(self.pos_embed, mean=0., std=.02)
         self.apply(init_weights)
 
@@ -303,12 +336,16 @@ class TemporalEncoder(nn.Module):
                 x: torch.Tensor,
                 padding_mask: torch.Tensor,
                 ) -> torch.Tensor:
+        x = self.center_embed(x)  # [N, T, D]
+        # import pdb
+        # pdb.set_trace()
+        x = x.permute(1, 0, 2)  # [T, N, D]
         x = torch.where(padding_mask.t().unsqueeze(-1), self.padding_token, x)
-        expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
-        x = torch.cat((x, expand_cls_token), dim=0)
+        # expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
+        # x = torch.cat((x, expand_cls_token), dim=0)
         x = x + self.pos_embed
         out = self.transformer_encoder(src=x, mask=self.attn_mask, src_key_padding_mask=None)
-        return out[-1]  # [N, D]
+        return out  # [N, 20, D]
 
     @staticmethod
     def generate_square_subsequent_mask(seq_len: int) -> torch.Tensor:
@@ -471,3 +508,4 @@ class ALEncoder(MessagePassing):
 
     def _ff_block(self, x_actor: torch.Tensor) -> torch.Tensor:
         return self.mlp(x_actor)
+
