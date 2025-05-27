@@ -57,7 +57,7 @@ class customEncoder(nn.Module):
                                     num_heads=num_heads,
                                     dropout=dropout,
                                     parallel=parallel)
-        self.temporal_encoder = TemporalEncoder(historical_steps=historical_steps,
+        self.temporal_encoder = custom_TemporalEncoder(historical_steps=historical_steps,
                                                 embed_dim=embed_dim,
                                                 num_heads=num_heads,
                                                 dropout=dropout,
@@ -104,16 +104,16 @@ class customEncoder(nn.Module):
         #     out = torch.stack(out)  # [T, N, D]
 
         input_x = data.x # (N, 20, 2) 
-        import pdb
+        
         # pdb.set_trace()
 
         # input_x = self.temporal_enc(input_x)[0] # [N,D] LSTM
 
         input_x = self.temporal_encoder(x=input_x, padding_mask=data['padding_mask'][:, : self.historical_steps]) # (N, 20, D)
-        input_x = input_x.permute(1, 0, 2) # (N, 20, D)
+        out = input_x.permute(1, 0, 2) # (N, 20, D)
         
         
-        out = self.identity(input_x) # (N, 20, 2)
+        #out = self.identity(input_x) # (N, 20, 2)
         # out = self.temporal_encoder(x=input_x, padding_mask=data['padding_mask'][:, : self.historical_steps]) #(809, 128)
 
         # edge_index, edge_attr = self.drop_edge(data['lane_actor_index'], data['lane_actor_vectors'])
@@ -123,6 +123,8 @@ class customEncoder(nn.Module):
         # out = out.permute(1, 0, 2)
 
         return out
+
+
 
 
 
@@ -309,7 +311,7 @@ class AAEncoder(MessagePassing):
         return self.mlp(x)
 
 
-class TemporalEncoder(nn.Module):
+class custom_TemporalEncoder(nn.Module):
 
     def __init__(self,
                  historical_steps: int,
@@ -317,7 +319,7 @@ class TemporalEncoder(nn.Module):
                  num_heads: int = 8,
                  num_layers: int = 4,
                  dropout: float = 0.1) -> None:
-        super(TemporalEncoder, self).__init__()
+        super(custom_TemporalEncoder, self).__init__()
         encoder_layer = TemporalEncoderLayer(embed_dim=embed_dim, num_heads=num_heads, dropout=dropout)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=num_layers,
                                                          norm=nn.LayerNorm(embed_dim))
@@ -343,6 +345,7 @@ class TemporalEncoder(nn.Module):
         x = torch.where(padding_mask.t().unsqueeze(-1), self.padding_token, x)
         # expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
         # x = torch.cat((x, expand_cls_token), dim=0)
+        
         x = x + self.pos_embed
         out = self.transformer_encoder(src=x, mask=self.attn_mask, src_key_padding_mask=None)
         return out  # [N, 20, D]
@@ -353,6 +356,44 @@ class TemporalEncoder(nn.Module):
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
         return mask
 
+
+class TemporalEncoder(nn.Module):
+
+    def __init__(self,
+                 historical_steps: int,
+                 embed_dim: int,
+                 num_heads: int = 8,
+                 num_layers: int = 4,
+                 dropout: float = 0.1) -> None:
+        super(TemporalEncoder, self).__init__()
+        encoder_layer = TemporalEncoderLayer(embed_dim=embed_dim, num_heads=num_heads, dropout=dropout)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=num_layers,
+                                                         norm=nn.LayerNorm(embed_dim))
+        self.padding_token = nn.Parameter(torch.Tensor(historical_steps, 1, embed_dim))
+        self.cls_token = nn.Parameter(torch.Tensor(1, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.Tensor(historical_steps + 1, 1, embed_dim))
+        attn_mask = self.generate_square_subsequent_mask(historical_steps + 1)
+        self.register_buffer('attn_mask', attn_mask)
+        nn.init.normal_(self.padding_token, mean=0., std=.02)
+        nn.init.normal_(self.cls_token, mean=0., std=.02)
+        nn.init.normal_(self.pos_embed, mean=0., std=.02)
+        self.apply(init_weights)
+
+    def forward(self,
+                x: torch.Tensor,
+                padding_mask: torch.Tensor) -> torch.Tensor:
+        x = torch.where(padding_mask.t().unsqueeze(-1), self.padding_token, x)
+        expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
+        x = torch.cat((x, expand_cls_token), dim=0)
+        x = x + self.pos_embed
+        out = self.transformer_encoder(src=x, mask=self.attn_mask, src_key_padding_mask=None)
+        return out[-1]  # [N, D]
+
+    @staticmethod
+    def generate_square_subsequent_mask(seq_len: int) -> torch.Tensor:
+        mask = (torch.triu(torch.ones(seq_len, seq_len)) == 1).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return mask
 
 class TemporalEncoderLayer(nn.Module):
 

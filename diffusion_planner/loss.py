@@ -113,8 +113,8 @@ def diffusion_loss_func(
 
         
         assert not torch.isnan(dpm_loss).sum(), f"loss cannot be nan, z={z}"
-# x (20, 2)
-# gt(20, 2)
+        # x (20, 2)
+        # gt(20, 2)
     if model.stage == "pred" or model.stage == "joint":
         combined_loss, reg_loss, cls_loss = model.compute_loss(y_hat, pi, inputs)
         loss['regression_loss'] = reg_loss

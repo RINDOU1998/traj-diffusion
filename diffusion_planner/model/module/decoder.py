@@ -25,8 +25,8 @@ class Decoder(nn.Module):
             # route_encoder = RouteEncoder(config.route_num, config.lane_len, drop_path_rate=config.encoder_drop_path_rate, hidden_dim=config.hidden_dim),
             depth=config.decoder_depth, 
             #output_dim= (config.future_len + 1) * 4, # x, y, cos, sin
-            output_dim= (20) * 2, # x, y in L comp
-            hidden_dim=config.hidden_dim, 
+            output_dim=  2, # x, y in L comp
+            hidden_dim=config.embed_dim, 
             heads=config.num_heads, 
             dropout=dpr,
             model_type=config.diffusion_model_type
@@ -66,37 +66,25 @@ class Decoder(nn.Module):
 
         # NOTE prepare av trajectory and diffusion time if training
         
-        # Inspect the inputs
-        # print("Encoder Outputs Shape:", encoder_outputs.shape)
-        # print("Inputs Keys:", inputs.keys())
-        # print("Inputs Batch Shape:", inputs.batch.shape)
-        # print("Inputs AV Index:", inputs.av_index)
-        # print("inputs.agent_id",inputs.agent_index)
+        
 
         # TODO : do global reconstruction in separate training
         batch_vec = inputs.batch        
         x_his = sample_agent_history(inputs) # [B, 1, 20, 2]
 
         B = inputs.batch.max().item() + 1
-        # NOTE instead of extract_av_embeddings, add class embedding into encoder_outputs and use all embedding and preproj x into same embedding space as encoder_outpus
+        # NOTE type embedding
+        # agent_type = extract_agent_type(batch_vec, inputs.agent_index, B)# [B*N] 0 for av ,  1 for others
+        # type_embedding = self.agent_type_embed(agent_type)                 # [B*N, 2*D]
+        # encoding = encoder_outputs + type_embedding                        # [B*N, 2*D]
         
-        
-        agent_type = extract_agent_type(batch_vec, inputs.agent_index, B)# [B*N] 0 for av ,  1 for others
-        type_embedding = self.agent_type_embed(agent_type)                 # [B*N, 2*D]
-        encoding = encoder_outputs + type_embedding                        # [B*N, 2*D]
-        
+        # just use the agent local embedding
+        encoding = encoder_outputs[inputs.agent_index, :] #[N,D ] to [B, D]
 
-        #print("x_his.shape",x_his.shape)
+       
         B, P, T, _ = x_his.shape
 
-        # DPM Sampler(do inference here, denoise the sampled noise with context guidance)
-
-        # [B, 1 , 20 * 2]
-
-        
-        #add last displacement to keep  heading
-        # xT = torch.cat([torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, 19,:]], dim=2).reshape(B, P, -1)
-
+       
         xT = torch.cat([ torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, -1, :].unsqueeze(2) ], dim=2).reshape(B, P, -1)
 
         def initial_state_constraint(xt, t, step):
@@ -134,13 +122,11 @@ class Decoder(nn.Module):
         #NOTE： remove state normalizer 
         # x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 2))
 
-
-
         if self.training: # [B,]
             z = torch.randn_like(x_his, device=x_his.device)
             mean, std = self._sde.marginal_prob(x_his, t)
             sampled_trajectories = mean + std * z
-            sampled_trajectories = sampled_trajectories.reshape(B, P, -1) # [B, 1,20]
+            sampled_trajectories = sampled_trajectories.reshape(B, P, -1) # [B, 1,40]
             
             return {
                     "score": self.dit(
@@ -149,15 +135,19 @@ class Decoder(nn.Module):
                         encoding,
                         batch_vec
 
-                    ).reshape(B, P, -1, 2),
+                    ).reshape(B, -1, 2), #[B,1,20,2]
                     "std" : std,
                     "z" : z,
-                    "gt" : x_his,
+                    "gt" : x_his.reshape(B,-1,2),      #[B,P,20,2]
                     "x0": x0
                 }
         else:
             return {
-                    "x0": x0
+                    "score":x0.reshape(B,-1,2),
+                    "x0": x0.reshape(B,-1,2),
+                    "gt" : x_his.reshape(B,-1,2),
+                    "std" : None,
+                    "z" : None,
                 }
 
         
@@ -294,26 +284,28 @@ class DiT(nn.Module):
     @property
     def model_type(self):
         return self._model_type
-    
+
 
     #  sampled_trajectories, 
     # diffusion_time,
     # encoding,
     # batch_vec
-
+        
     def forward(self, x, t, cross_c, batch_vec):
         """
         Forward pass of DiT.
         x: (B, P, output_dim)   -> Embedded out of DiT
         t: (B,)
-        cross_c: (B, N, D)      -> Cross-Attention context
+        cross_c: (B, T, D)      -> Cross-Attention context
         """
-        B, P, _ = x.shape
-        
-        x = self.preproj(x)
-        #print("x after preporj shape:", x.shape)
+        B, T, D = cross_c.shape
+        x = x.reshape(B, -1, 2)  # [B, T, 2]
+        x = self.preproj(x) # [B,20,D]
+       
         # NOTE add t_embedder
+
         t_embed = self.t_embedder(t)           # [B, D]
+        
         x = x + t_embed.unsqueeze(1)           # Inject time info [B, P, D]
         
 
@@ -321,8 +313,6 @@ class DiT(nn.Module):
         # x_embedding = torch.cat([self.agent_embedding.weight[0][None, :], self.agent_embedding.weight[1][None, :].expand(P - 1, -1)], dim=0)  # (P, D)
         # x_embedding = x_embedding[None, :, :].expand(B, -1, -1) # (B, P, D)
         # x = x + x_embedding     
-        
-
         
         # add embedding to context for 
 
@@ -335,9 +325,11 @@ class DiT(nn.Module):
         batch_vec = batch_vec
 
         for block in self.blocks:
-            x = block(x, cross_c,t_embed,batch_vec)  
+            x = block(x, cross_c,t_embed,batch_vec)   #[B,T,D]
             
-        x = self.final_layer(x)
+        
+        x = self.final_layer(x) #[B,T,2]
+        x = x.reshape(B, 1, -1)
         
         if self._model_type == "score":
             return x / (self.marginal_prob_std(t)[:, None, None] + 1e-6)

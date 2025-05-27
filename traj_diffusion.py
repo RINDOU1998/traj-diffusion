@@ -21,7 +21,7 @@ class Traj_Diffusion(nn.Module):
         super().__init__()
 
         self.encoder = HiVT_Encoder(config)
-        # self.decoder = Diffusion_Planner_Decoder(config)
+        #self.decoder = Diffusion_Planner_Decoder(config)
         # MLP decoder for X_0 recon
         self.decoder = MLPReconstructor(local_channels=config.embed_dim,global_channels=config.embed_dim)
         self.pred_decoder = MLPDecoder(local_channels=config.embed_dim,
@@ -92,9 +92,9 @@ class Traj_Diffusion(nn.Module):
             y_hat, pi = self.pred_decoder(local_embed, global_embed)
             return y_hat, pi
         
-        encoder_outputs, _, _ = self.diffusion_encoder(inputs)
+        encoder_outputs = self.diffusion_encoder(inputs)
         decoder_outputs = self.decoder(encoder_outputs, inputs)
-        x0 = decoder_outputs['x0'].squeeze(1)  # [B, T, 2]
+        x0 = decoder_outputs['x0']  # [B, T, 2]
         
 
         # 3) Shallow‐copy inputs so we don’t overwrite the original
@@ -115,8 +115,8 @@ class Traj_Diffusion(nn.Module):
         inputs2['positions'][inputs2['agent_index'], :20] = recal_his_pos
         ##############################################################################################
 
-
-
+        
+        
         # 6) Re‐encode with reconstructed history for prediction
         _, local_embed, global_embed = self.encoder(inputs2)
         y_hat, pi = self.pred_decoder(local_embed=local_embed, global_embed=global_embed)

@@ -22,7 +22,7 @@ class MLPReconstructor(nn.Module):
             nn.Linear(self.input_dim, self.input_dim),
             nn.LayerNorm(self.input_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(self.input_dim,  self.history_steps*2)  # [B, 20*2]
+            nn.Linear(self.input_dim,  2)  # [B, 20*2]
         )
 
         self.apply(init_weights)
@@ -40,9 +40,9 @@ class MLPReconstructor(nn.Module):
 
         import pdb
         # pdb.set_trace()
-        x0 = encoder_outputs[inputs['agent_index'], :] # [B,D]
+        x0 = encoder_outputs[inputs['agent_index'], :] # [B,20,D]
         
-        # x0 = self.mlp(agent_embed)                                    # [B, 40]
+        x0 = self.mlp(x0)   # [B, 20,2 ]
         # x0 = x0.view(-1, self.history_steps, 2)                 # [B, 20, 2]
         gt = inputs['x'][inputs['agent_index'], :,:2]  # [B, 20, 2]
         # keep the last two frame pos and last displacement
@@ -56,7 +56,8 @@ class MLPReconstructor(nn.Module):
 
         # # keep the last two frame pos and last displacement
         # x0[:, :, -1, :] = gt[:, :, -1, :] # [B, P, 20, 2]
-
+        # import pdb
+        # pdb.set_trace()
         return  {
                     "score": x0,
                    

@@ -20,6 +20,6 @@ from models.global_interactor import GlobalInteractorLayer
 from models.local_encoder import AAEncoder
 from models.local_encoder import ALEncoder
 from models.local_encoder import LocalEncoder
-from models.local_encoder import TemporalEncoder
+from models.local_encoder import custom_TemporalEncoder
 from models.local_encoder import TemporalEncoderLayer
 from models.local_encoder import customEncoder

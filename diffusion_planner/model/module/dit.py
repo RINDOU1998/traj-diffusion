@@ -65,7 +65,7 @@ class TimestepEmbedder(nn.Module):
 
 
 class DiTBlock(nn.Module):
-    # TODO remove first adan self attn layer and use cross attn from cross_c only
+    
     """
     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning for ego and Cross-Attention.
     """
@@ -100,19 +100,24 @@ class DiTBlock(nn.Module):
 
 
         # cross attn with cross  
-        # cross_c = [B,2*D]
-        # x = [ B,1,2*20]
        
+        #  cross c in shape [B, 20 ,D]
+        #  x in shape [B, 1, D ]
 
-        context, mask = to_dense_batch(cross_c, batch_vec)  # [B, N_max, D], [B, N_max]
+
+        # context, mask = to_dense_batch(cross_c, batch_vec)  # [B, N_max, D], [B, N_max]
+
         #print("context shape:", context.shape)
         #print(" x shape:", x.shape)
+
         x, _ = self.cross_attn(
-            query=self.norm1(x),                # [B, P, D]
-            key=context, value=context, # [B, N_max, D]
-            key_padding_mask=~mask      # [B, N_max]
+            query=self.norm1(x),                # [T, B, D]
+            key=cross_c,            # [T, B, D]
+            value=cross_c           # [T, B, D]
+            # key_padding_mask=~mask      # [B, N_max]
         )
         #x = self.cross_attn(self.norm3(x), cross_c, cross_c)[0]
+       
         x = self.mlp2(self.norm4(x))  
         return x 
     
