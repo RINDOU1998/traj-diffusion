@@ -280,6 +280,8 @@ class DiT(nn.Module):
         self.final_layer = FinalLayer(hidden_dim, output_dim)
         self._sde = sde
         self.marginal_prob_std = self._sde.marginal_prob_std
+        self.pos_embed = nn.Parameter(torch.Tensor(1, 20 , hidden_dim))
+        nn.init.normal_(self.pos_embed, mean=0., std=.02)
                
     @property
     def model_type(self):
@@ -294,9 +296,9 @@ class DiT(nn.Module):
     def forward(self, x, t, cross_c, batch_vec):
         """
         Forward pass of DiT.
-        x: (B, P, output_dim)   -> Embedded out of DiT
+        x: (B, P, output_dim 2* 20)   -> Embedded out of DiT
         t: (B,)
-        cross_c: (B, T, D)      -> Cross-Attention context
+        cross_c: (B, T, D)      -> conditioning context, agent local info
         """
         B, T, D = cross_c.shape
         x = x.reshape(B, -1, 2)  # [B, T, 2]
@@ -306,9 +308,11 @@ class DiT(nn.Module):
 
         t_embed = self.t_embedder(t)           # [B, D]
         
-        x = x + t_embed.unsqueeze(1)           # Inject time info [B, P, D]
+         # Inject time info into condition
+        cross_c = cross_c + t_embed.unsqueeze(1)    # [B, T, D]
         
 
+        cross_c = cross_c + self.pos_embed[:, :T, :]  # [B, T, D] add positional embedding
         # add av and route 
         # x_embedding = torch.cat([self.agent_embedding.weight[0][None, :], self.agent_embedding.weight[1][None, :].expand(P - 1, -1)], dim=0)  # (P, D)
         # x_embedding = x_embedding[None, :, :].expand(B, -1, -1) # (B, P, D)
@@ -322,6 +326,9 @@ class DiT(nn.Module):
 
         # attn_mask = torch.zeros((B, P), dtype=torch.bool, device=x.device)
         # attn_mask[:, 1:] = neighbor_current_mask
+
+
+
         batch_vec = batch_vec
 
         for block in self.blocks:

@@ -21,9 +21,9 @@ class Traj_Diffusion(nn.Module):
         super().__init__()
 
         self.encoder = HiVT_Encoder(config)
-        #self.decoder = Diffusion_Planner_Decoder(config)
+        self.decoder = Diffusion_Planner_Decoder(config)
         # MLP decoder for X_0 recon
-        self.decoder = MLPReconstructor(local_channels=config.embed_dim,global_channels=config.embed_dim)
+        # self.decoder = MLPReconstructor(local_channels=config.embed_dim,global_channels=config.embed_dim)
         self.pred_decoder = MLPDecoder(local_channels=config.embed_dim,
                                   global_channels=config.embed_dim,
                                   future_steps=config.future_steps,
@@ -36,6 +36,7 @@ class Traj_Diffusion(nn.Module):
 
         # separate encoder for training
         self.diffusion_encoder =  Customized_Encoder(config)
+
 
 
     def set_stage(self, stage: str):
@@ -95,6 +96,7 @@ class Traj_Diffusion(nn.Module):
         encoder_outputs = self.diffusion_encoder(inputs)
         decoder_outputs = self.decoder(encoder_outputs, inputs)
         x0 = decoder_outputs['x0']  # [B, T, 2]
+        x0 = x0.squeeze(1)  # [B, T, 2]
         
 
         # 3) Shallow‐copy inputs so we don’t overwrite the original

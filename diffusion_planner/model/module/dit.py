@@ -5,11 +5,19 @@ from timm.models.layers import Mlp
 from torch_geometric.utils import to_dense_batch
 
 def modulate(x, shift, scale, only_first=False):
+    # if only_first:
+    #     x_first, x_rest = x[:, :1], x[:, 1:]
+    #     x = torch.cat([x_first * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1), x_rest], dim=1)
+    # else:
+    #     x = x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+
+    # fix the dimension of shift and scale
     if only_first:
         x_first, x_rest = x[:, :1], x[:, 1:]
-        x = torch.cat([x_first * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1), x_rest], dim=1)
+        x_first = x_first * (1 + scale[:, :1]) + shift[:, :1]
+        x = torch.cat([x_first, x_rest], dim=1)
     else:
-        x = x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+        x = x * (1 + scale) + shift
 
     return x
 
@@ -86,16 +94,25 @@ class DiTBlock(nn.Module):
         self.norm4 = nn.LayerNorm(dim)
 
         self.mlp2 = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
+        self.attn_mask = self.generate_square_subsequent_mask(20)
 
     def forward(self, x, cross_c, t_embed, batch_vec):
-
-        # shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(y).chunk(6, dim=1)
-        # # adaln self attn
-        # modulated_x = modulate(self.norm1(x), shift_msa, scale_msa)
-        # x = x + gate_msa.unsqueeze(1) * self.attn(modulated_x, modulated_x, modulated_x, key_padding_mask=attn_mask)[0]
         
-        # modulated_x = modulate(self.norm2(x), shift_mlp, scale_mlp)
-        # x = x + gate_mlp.unsqueeze(1) * self.mlp1(modulated_x)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cross_c).chunk(6, dim=2) # [B,T,D] token-wise modulation
+        # adaln self attn
+        modulated_x = modulate(self.norm1(x), shift_msa, scale_msa)
+        
+
+
+        # NOTE do not use the causal mask current
+
+        # also fix th
+
+        x = x + gate_msa * self.attn(modulated_x, modulated_x, modulated_x)[0]
+        
+        modulated_x = modulate(self.norm2(x), shift_mlp, scale_mlp)
+        x = x + gate_mlp * self.mlp1(modulated_x)
+        
 
 
 
@@ -110,17 +127,22 @@ class DiTBlock(nn.Module):
         #print("context shape:", context.shape)
         #print(" x shape:", x.shape)
 
-        x, _ = self.cross_attn(
-            query=self.norm1(x),                # [T, B, D]
-            key=cross_c,            # [T, B, D]
-            value=cross_c           # [T, B, D]
-            # key_padding_mask=~mask      # [B, N_max]
-        )
+        # x, _ = self.cross_attn(
+        #     query=self.norm1(x),                # [T, B, D]
+        #     key=cross_c,            # [T, B, D]
+        #     value=cross_c           # [T, B, D]
+        #     # key_padding_mask=~mask      # [B, N_max]
+        # )
         #x = self.cross_attn(self.norm3(x), cross_c, cross_c)[0]
        
-        x = self.mlp2(self.norm4(x))  
+        #x = self.mlp2(self.norm4(x))  
         return x 
-    
+
+    @staticmethod
+    def generate_square_subsequent_mask(seq_len: int) -> torch.Tensor:
+        mask = (torch.triu(torch.ones(seq_len, seq_len)) == 1).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return mask 
     
     
 class FinalLayer(nn.Module):
