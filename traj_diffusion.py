@@ -165,6 +165,39 @@ class Traj_Diffusion(nn.Module):
         self.log('val_minMR', self.minMR, prog_bar=True, on_step=False, on_epoch=True, batch_size=y_agent.size(0))
 
 
+    def configure_optimizers(self,config):
+        decay = set()
+        no_decay = set()
+        whitelist_weight_modules = (nn.Linear, nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.MultiheadAttention, nn.LSTM, nn.GRU)
+        blacklist_weight_modules = (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d, nn.LayerNorm, nn.Embedding)
+        for module_name, module in self.named_modules():
+            for param_name, param in module.named_parameters():
+                full_param_name = '%s.%s' % (module_name, param_name) if module_name else param_name
+                if 'bias' in param_name:
+                    no_decay.add(full_param_name)
+                elif 'weight' in param_name:
+                    if isinstance(module, whitelist_weight_modules):
+                        decay.add(full_param_name)
+                    elif isinstance(module, blacklist_weight_modules):
+                        no_decay.add(full_param_name)
+                elif not ('weight' in param_name or 'bias' in param_name):
+                    no_decay.add(full_param_name)
+        param_dict = {param_name: param for param_name, param in self.named_parameters()}
+        inter_params = decay & no_decay
+        union_params = decay | no_decay
+        assert len(inter_params) == 0
+        assert len(param_dict.keys() - union_params) == 0
+
+        optim_groups = [
+            {"params": [param_dict[param_name] for param_name in sorted(list(decay))],
+             "weight_decay": config.weight_decay},
+            {"params": [param_dict[param_name] for param_name in sorted(list(no_decay))],
+             "weight_decay": 0.0},
+        ]
+
+        optimizer = torch.optim.AdamW(optim_groups, lr=config.lr, weight_decay=config.weight_decay)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=config.T_max, eta_min=0.0)
+        return [optimizer], [scheduler]
 
 # use backbone encoder to extract features from the input data
 class HiVT_Encoder(nn.Module):

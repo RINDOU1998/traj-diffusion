@@ -19,6 +19,7 @@ from diffusion_planner.utils import ddp
 # from diffusion_planner.train_epoch import train_epoch 
 from diffusion_planner.val_epoch import validation_epoch
 from diffusion_planner.rec_val_epoch import validation_epoch as rec_validation_epoch
+from diffusion_planner.pre_val_epoch import validation_epoch as pred_validation_epoch
 from diffusion_planner.train_epoch_2stage import train_epoch
 #from datamodules import ArgoverseV1DataModule
 from datasets import ArgoverseV1Dataset
@@ -126,7 +127,7 @@ def get_args():
     parser.add_argument('--batch_size', type=int, help='batch size (default: 32)', default=32)
     parser.add_argument('--learning_rate', type=float, help='learning rate (default: 5e-4)', default=5e-4)
 
-    parser.add_argument('--warm_up_epoch', type=int, help='number of warm up', default=1)
+    parser.add_argument('--warm_up_epoch', type=int, help='number of warm up', default=10)
     parser.add_argument('--encoder_drop_path_rate', type=float, help='encoder drop out rate', default=0.1)
     parser.add_argument('--decoder_drop_path_rate', type=float, help='decoder drop out rate', default=0.1)
 
@@ -255,8 +256,15 @@ def model_training(args):
     # optimizer
     params = [{'params': ddp.get_model(diffusion_planner, args.ddp).parameters(), 'lr': args.learning_rate}]
 
-    optimizer = optim.AdamW(params)
-    scheduler = CosineAnnealingWarmUpRestarts(optimizer, train_epochs, args.warm_up_epoch)
+
+    # diffusion planner optimizer
+    # optimizer = optim.AdamW(params)
+    # scheduler = CosineAnnealingWarmUpRestarts(optimizer, 64, args.warm_up_epoch)
+    
+    # Hivt optimzer
+    optimizer, scheduler = diffusion_planner.configure_optimizers(args)
+    optimizer = optimizer[0]
+    scheduler = scheduler[0]
 
     if args.resume_model_path is not None:
         print(f"Model loaded from {args.resume_model_path}")
@@ -296,9 +304,15 @@ def model_training(args):
     if args.pred_epochs > 0:
         diffusion_planner.set_stage("pred")
         for e in range(args.pred_epochs):
+            lr_dict = {'lr': optimizer.param_groups[0]['lr']}
+            wandb_logger.log_metrics({f"lr/{k}": v for k, v in lr_dict.items()}, step=e+1)
             print(f"[Pred] Epoch {e+1}/{args.pred_epochs}")
             train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args)
             pred_losses.append(train_total_loss)
+            wandb_logger.log_metrics({f"train_loss/{k}": v for k, v in train_loss.items()}, step=e+1)
+            val_ade, val_fde, val_mr = pred_validation_epoch(diffusion_planner, val_loader, args.device)
+            wandb_logger.log_metrics({"val/ade": val_ade, "val/fde": val_fde, "val/mr": val_mr}, step=e+1)
+           
 
     # Phase 3: joint finetuning
     diffusion_planner.set_stage("joint")
@@ -334,7 +348,7 @@ def model_training(args):
                     'recon_losses': recon_losses,
                     'pred_losses': pred_losses
                 }
-                save_model(diffusion_planner, optimizer, scheduler, save_path, epoch, train_losses, wandb_logger.id)
+                save_model(diffusion_planner, optimizer, scheduler, save_path, epoch, train_total_loss, wandb_logger.id)
                 print(f"Model saved in {save_path}\n")
             else:
                 # Save top-k model by ADE
