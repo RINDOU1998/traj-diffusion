@@ -4,6 +4,8 @@ import torch.nn as nn
 #from diffusion_planner.model.module.encoder import Encoder
 from diffusion_planner.model.module.decoder import Decoder
 from diffusion_planner.utils.utils import reconstruct_absolute_position_from_last_frame
+from diffusion_planner.random_mask import random_mask_agent_history, mask_x_gt_by_lopt, recalculate_masks
+from diffusion_planner.model.module.gating import gating
 from models import GlobalInteractor
 from models import LocalEncoder
 from models import customEncoder
@@ -13,6 +15,7 @@ from copy import deepcopy
 from losses import LaplaceNLLLoss
 from losses import SoftTargetCrossEntropyLoss
 from models.MLP_recon import MLPReconstructor
+
 import torch.nn.functional as F
 import copy
 
@@ -20,22 +23,26 @@ class Traj_Diffusion(nn.Module):
     def __init__(self, config):
         super().__init__()
 
+        
+
         self.encoder = HiVT_Encoder(config)
-        self.decoder = Diffusion_Planner_Decoder(config)
+        # self.decoder = Diffusion_Planner_Decoder(config)
         # MLP decoder for X_0 recon
-        # self.decoder = MLPReconstructor(local_channels=config.embed_dim,global_channels=config.embed_dim)
+        self.decoder = MLPReconstructor(local_channels=config.embed_dim,global_channels=config.embed_dim)
         self.pred_decoder = MLPDecoder(local_channels=config.embed_dim,
                                   global_channels=config.embed_dim,
                                   future_steps=config.future_steps,
                                   num_modes=config.num_modes,
                                   uncertain=True)
         self.rotate = config.rotate
+        self.random_mask = config.random_mask
         self.device = torch.device(config.device)
         self.reg_loss = LaplaceNLLLoss(reduction='mean')
         self.cls_loss = SoftTargetCrossEntropyLoss(reduction='mean')
-
+        
         # separate encoder for training
         self.diffusion_encoder =  Customized_Encoder(config)
+        self.gating = gating(embed_dim=config.embed_dim, hidden_size=256)
 
 
 
@@ -50,6 +57,12 @@ class Traj_Diffusion(nn.Module):
     
     # expect HiVt preprocessed data as input
     def forward(self, inputs: TemporalData):
+        if self.random_mask:
+            inputs = random_mask_agent_history(inputs, min_keep=2, history_steps=20)
+
+        
+        
+
         ################### rotate preprocess#######################################
         if self.rotate and 'rotate_mat' not in inputs:
             rotate_mat = torch.empty(inputs.num_nodes, 2, 2, device=self.device)
@@ -66,20 +79,16 @@ class Traj_Diffusion(nn.Module):
             inputs['rotate_mat'] = None
         #############################################################################
 
-
-        # 2) Shared encoder + diffusion decoder to get x0
-        #encoder_outputs, _, _ = self.encoder(inputs)
+        # NOTE add random mask
         
-
-
-        # Recon stage only: produce x0 and return
-        # if self.stage == "recon":
-        #     encoder_outputs, _, _ = self.diffusion_encoder(inputs)
-        #     decoder_outputs = self.decoder(encoder_outputs, inputs)
-        #     x0 = decoder_outputs["x0"].squeeze(1)  # [B, T, 2]
-        #     return x0, decoder_outputs
+        
         if self.stage == "recon":
-            local_embedding = self.diffusion_encoder(inputs)
+            local_embedding , cls_token  = self.diffusion_encoder(inputs) # [N, 20, D], [N, D]
+            
+            
+            L_opt, mask = self.gating(cls_token) # [B], [B, T_max]
+            # import pdb; pdb.set_trace()
+
             decoder_outputs = self.decoder(local_embedding, inputs)
             
             x0 = decoder_outputs["x0"].squeeze(1)  # [B, T, 2]
@@ -93,11 +102,28 @@ class Traj_Diffusion(nn.Module):
             y_hat, pi = self.pred_decoder(local_embed, global_embed)
             return y_hat, pi
         
-        encoder_outputs = self.diffusion_encoder(inputs)
+        encoder_outputs, cls_token = self.diffusion_encoder(inputs)
+        
+
+        # gating module to get L_opt and mask for agent
+        L_opt, mask = self.gating(cls_token) # [B], [B, T_max]
+        L_opt = L_opt[inputs['agent_index']]  # [B] # get the L_opt for the agent
+        mask = mask[inputs['agent_index']]  # [B, T_max] # get the mask for the agent
+        
+        # reconstruction module
         decoder_outputs = self.decoder(encoder_outputs, inputs)
         x0 = decoder_outputs['x0']  # [B, T, 2]
-        x0 = x0.squeeze(1)  # [B, T, 2]
-        
+
+        # x0 = x0.squeeze(1)  # [B, T, 2]
+        # get gt for recon loss
+        gt = decoder_outputs['gt']  # [B, T, 2]
+        masked_x_gt = mask_x_gt_by_lopt( gt, L_opt)  # [B, T, 2]
+        decoder_outputs['gt'] = masked_x_gt  # update gt in decoder outputs
+        decoder_outputs['score'] = decoder_outputs['score']*mask.unsqueeze(-1)  # [B, T, 2] # mask the score by L_opt
+
+        # recalculate the padding mask and bos mask for reconstructed history
+        L_opt = L_opt.floor().clamp(min=2, max=20).long()  # [B]
+        inputs = recalculate_masks(inputs, L_opt, history_steps=20) # [B, T_max]
 
         # 3) Shallow‐copy inputs so we don’t overwrite the original
         inputs2 = copy.copy(inputs)

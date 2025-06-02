@@ -105,12 +105,20 @@ class customEncoder(nn.Module):
 
         input_x = data.x # (N, 20, 2) 
         
-        # pdb.set_trace()
+        
 
         # input_x = self.temporal_enc(input_x)[0] # [N,D] LSTM
 
         input_x = self.temporal_encoder(x=input_x, padding_mask=data['padding_mask'][:, : self.historical_steps]) # (N, 20, D)
+        
+        
+
         out = input_x.permute(1, 0, 2) # (N, 20, D)
+
+        cls_token = out[:,-1,:]
+        out = out[:, :-1, :]
+        
+
         
         
         #out = self.identity(input_x) # (N, 20, 2)
@@ -122,7 +130,7 @@ class customEncoder(nn.Module):
         #                       traffic_controls=data['traffic_controls'], rotate_mat=data['rotate_mat'])
         # out = out.permute(1, 0, 2)
 
-        return out
+        return out , cls_token  # [N, 20, D], [N, D]
 
 
 
@@ -324,13 +332,13 @@ class custom_TemporalEncoder(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=num_layers,
                                                          norm=nn.LayerNorm(embed_dim))
         self.padding_token = nn.Parameter(torch.Tensor(historical_steps, 1, embed_dim))
-        # self.cls_token = nn.Parameter(torch.Tensor(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(torch.Tensor(historical_steps, 1, embed_dim))
+        self.cls_token = nn.Parameter(torch.Tensor(1, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.Tensor(historical_steps + 1, 1, embed_dim))
         self.center_embed = SingleInputEmbedding(in_channel=2, out_channel=embed_dim)
-        attn_mask = self.generate_square_subsequent_mask(historical_steps)
+        attn_mask = self.generate_square_subsequent_mask(historical_steps + 1)
         self.register_buffer('attn_mask', attn_mask)
         nn.init.normal_(self.padding_token, mean=0., std=.02)
-        # nn.init.normal_(self.cls_token, mean=0., std=.02)
+        nn.init.normal_(self.cls_token, mean=0., std=.02)
         nn.init.normal_(self.pos_embed, mean=0., std=.02)
         self.apply(init_weights)
 
@@ -343,8 +351,8 @@ class custom_TemporalEncoder(nn.Module):
         # pdb.set_trace()
         x = x.permute(1, 0, 2)  # [T, N, D]
         x = torch.where(padding_mask.t().unsqueeze(-1), self.padding_token, x)
-        # expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
-        # x = torch.cat((x, expand_cls_token), dim=0)
+        expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
+        x = torch.cat((x, expand_cls_token), dim=0)
         
         x = x + self.pos_embed
         out = self.transformer_encoder(src=x, mask=self.attn_mask, src_key_padding_mask=None)

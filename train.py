@@ -117,6 +117,7 @@ def get_args():
     parser.set_defaults(pin_mem=True)
     
     # Training
+    parser.add_argument('--random_mask', default=False, type=boolean, help='use random mask for agent history')
     parser.add_argument('--recon_epochs', type=int, default=64,
                     help="# epochs to train reconstruction only")
     parser.add_argument('--pred_epochs',  type=int, default=64,
@@ -359,8 +360,8 @@ def model_training(args):
                     if epoch == top_epoch:
                         save_model(diffusion_planner, optimizer, scheduler, save_path, epoch, train_total_loss, wandb_logger.id)
                         print(f"Top-{K} Model saved at epoch {epoch+1} with ADE {val_ade:.4f}")
-        scheduler.step()
-        #train_sampler.set_epoch(epoch + 1)
+        # scheduler.step()
+        # train_sampler.set_epoch(epoch + 1)
     
     print("Training finished")
 
