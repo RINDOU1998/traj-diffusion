@@ -355,7 +355,11 @@ class custom_TemporalEncoder(nn.Module):
         x = torch.cat((x, expand_cls_token), dim=0)
         
         x = x + self.pos_embed
-        out = self.transformer_encoder(src=x, mask=self.attn_mask, src_key_padding_mask=None)
+
+        # NOTE remove attn mask , the causal mask
+        # out = self.transformer_encoder(src=x, mask=self.attn_mask, src_key_padding_mask=None)
+        out = self.transformer_encoder(src=x, src_key_padding_mask=None)
+        
         return out  # [N, 20, D]
 
     @staticmethod

@@ -18,7 +18,7 @@ class LoptDecoder(nn.Module):
         attn_weights = torch.softmax(self.attn_score(x_encoded), dim=1)  # [B, T, 1]
         pooled = torch.sum(attn_weights * x_encoded, dim=1)  # [B, D]
         length_logits = self.mlp(pooled)  # [B, T-1]
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         L_opt_one_hot, L_opt = self.sample_Lopt(length_logits)  # [B, T-1], [B]
         mask = self.generate_displacement_mask(L_opt)
         return L_opt, mask

@@ -136,7 +136,7 @@ class Traj_Diffusion(nn.Module):
         decoder_outputs['score'] = torch.where(mask, torch.zeros_like(decoder_outputs['score']), decoder_outputs['score'])  # [B, T, 2] # mask the score by L_opt
         
         # NOTE: debug here , fix the gt with Lopt mask 
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         x0 = torch.where(mask, torch.zeros_like(x0), x0)  # [B, T, 2] # mask the x0 by L_opt
         # recalculate the padding mask and bos mask for reconstructed history
         # L_opt = L_opt.floor().clamp(min=2, max=20).long()  # [B]
