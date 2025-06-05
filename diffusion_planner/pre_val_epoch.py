@@ -93,4 +93,4 @@ def validation_epoch(model, val_loader, device,show = False ):
     mr = mr_metric.compute().item()
     
     print(f"✅ Validation - Loss: {avg_loss:.4f}, ADE: {ade:.4f}, FDE: {fde:.4f}, MR: {mr:.4f}")
-    return ade, fde, mr
+    return ade, fde, mr, avg_loss

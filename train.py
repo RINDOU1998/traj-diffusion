@@ -311,9 +311,9 @@ def model_training(args):
             train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args)
             pred_losses.append(train_total_loss)
             wandb_logger.log_metrics({f"train_loss/{k}": v for k, v in train_loss.items()}, step=e+1)
-            val_ade, val_fde, val_mr = pred_validation_epoch(diffusion_planner, val_loader, args.device)
-            wandb_logger.log_metrics({"val/ade": val_ade, "val/fde": val_fde, "val/mr": val_mr}, step=e+1)
-           
+            val_ade, val_fde, val_mr,val_loss = pred_validation_epoch(diffusion_planner, val_loader, args.device)
+            wandb_logger.log_metrics({"val/ade": val_ade, "val/fde": val_fde, "val/mr": val_mr,"val/loss": val_loss}, step=e+1)
+            scheduler.step()
 
     # Phase 3: joint finetuning
     diffusion_planner.set_stage("joint")
@@ -339,8 +339,9 @@ def model_training(args):
             print({f"train_loss/{k}": v for k, v in train_loss.items()} , "epoch: ", epoch+1)
             print({f"lr/{k}": v for k, v in lr_dict.items()}, "epoch: ", epoch+1)
             # validation
-            val_ade, val_fde, val_mr = validation_epoch(diffusion_planner, val_loader, args.device)
-            wandb_logger.log_metrics({"val/ade": val_ade, "val/fde": val_fde, "val/mr": val_mr}, step=epoch+1)
+            val_ade, val_fde, val_mr, val_loss = validation_epoch(diffusion_planner, val_loader, args.device)
+            wandb_logger.log_metrics({"val/ade": val_ade, "val/fde": val_fde, "val/mr": val_mr, "val/loss": val_loss}, step=epoch+1)
+            
 
             if (epoch+1) % args.save_utd == 0:
                 # save model at the end of epoch
@@ -360,7 +361,7 @@ def model_training(args):
                     if epoch == top_epoch:
                         save_model(diffusion_planner, optimizer, scheduler, save_path, epoch, train_total_loss, wandb_logger.id)
                         print(f"Top-{K} Model saved at epoch {epoch+1} with ADE {val_ade:.4f}")
-        # scheduler.step()
+        scheduler.step()
         # train_sampler.set_epoch(epoch + 1)
     
     print("Training finished")
@@ -372,6 +373,8 @@ def model_validation(args):
     if global_rank == 0:
         print(f"\n🧪 Running Validation for {args.name} on {args.device}")
 
+    set_seed(args.seed)
+
     val_set = ArgoverseV1Dataset(args.root, 'val', None, args.local_radius)
     val_loader = DataLoader(val_set, batch_size=args.val_batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=False)
@@ -379,6 +382,7 @@ def model_validation(args):
    
 
     diffusion_planner = Traj_Diffusion(args).to(args.device)
+    diffusion_planner.set_stage("joint")
 
     if args.resume_model_path:
         print(f"🔄 Loading checkpoint from: {args.resume_model_path}")

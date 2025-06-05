@@ -39,7 +39,7 @@ class Decoder(nn.Module):
     def sde(self):
         return self._sde
     
-    def forward(self, encoder_outputs, inputs ,eps: float = 1e-3 ):
+    def forward(self, encoder_outputs, inputs, L_opt,eps: float = 1e-3 ):
         """
         Diffusion decoder process.
 
@@ -70,7 +70,10 @@ class Decoder(nn.Module):
 
         # TODO : do global reconstruction in separate training
         batch_vec = inputs.batch        
-        x_his = sample_agent_history(inputs) # [B, 1, 20, 2]
+        # x_his = sample_agent_history(inputs) # [B, 1, 20, 2]
+        x_his = inputs.x_copy[inputs.agent_index, :, :2]  # [B, 20, 2]
+        x_his = x_his.unsqueeze(1)  # [B, 1, T, 2]
+
 
         B = inputs.batch.max().item() + 1
         # NOTE type embedding
@@ -103,7 +106,8 @@ class Decoder(nn.Module):
                     other_model_params={
                 
                         "cross_c": encoding, 
-                        "batch_vec": batch_vec,                                 
+                        "batch_vec": batch_vec,   
+                        "L_opt": L_opt,                             
                     },
                     dpm_solver_params={
                         "correcting_xt_fn":initial_state_constraint,
@@ -133,7 +137,8 @@ class Decoder(nn.Module):
                         sampled_trajectories, 
                         diffusion_time,
                         encoding,
-                        batch_vec
+                        batch_vec,
+                        L_opt
                     ).reshape(B, -1, 2), #[B,1,20,2]
                     "std" : std,
                     "z" : z,
@@ -275,6 +280,7 @@ class DiT(nn.Module):
         #self.agent_embedding = nn.Embedding(2, hidden_dim)
         self.preproj = Mlp(in_features=output_dim, hidden_features=512, out_features=hidden_dim, act_layer=nn.GELU, drop=0.)
         self.t_embedder = TimestepEmbedder(hidden_dim) # add t_embedding into x_t instead of context
+        self.Length_embedder = TimestepEmbedder(hidden_dim)
         self.blocks = nn.ModuleList([DiTBlock(hidden_dim, heads, dropout, mlp_ratio) for i in range(depth)])
         self.final_layer = FinalLayer(hidden_dim, output_dim)
         self._sde = sde
@@ -292,7 +298,7 @@ class DiT(nn.Module):
     # encoding,
     # batch_vec
         
-    def forward(self, x, t, cross_c, batch_vec):
+    def forward(self, x, t, cross_c, batch_vec, L_opt):
         """
         Forward pass of DiT.
         x: (B, P, output_dim 2* 20)   -> Embedded out of DiT
@@ -309,6 +315,9 @@ class DiT(nn.Module):
         
          # Inject time info into condition
         cross_c = cross_c + t_embed.unsqueeze(1)    # [B, T, D]
+        # Inject L_opt into condition
+        L_embed = self.Length_embedder(L_opt)
+        cross_c = cross_c + L_embed.unsqueeze(1)
         
 
         cross_c = cross_c + self.pos_embed[:, :T, :]  # [B, T, D] add positional embedding

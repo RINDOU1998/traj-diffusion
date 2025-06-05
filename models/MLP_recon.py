@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from diffusion_planner.model.module.dit import TimestepEmbedder
 
 def init_weights(m):
     if isinstance(m, nn.Linear):
@@ -25,9 +26,13 @@ class MLPReconstructor(nn.Module):
             nn.Linear(self.input_dim,  2)  # [B, 20*2]
         )
 
+        self.Length_embedder = TimestepEmbedder(self.input_dim)
+
         self.apply(init_weights)
 
-    def forward(self, encoder_outputs: torch.Tensor, inputs: torch.Tensor) -> torch.Tensor:
+    
+
+    def forward(self, encoder_outputs: torch.Tensor, inputs: torch.Tensor, L_opt: torch.Tensor) -> torch.Tensor:
         """
         Args:
             local_embed:  [B, D]
@@ -41,10 +46,17 @@ class MLPReconstructor(nn.Module):
         import pdb
         # pdb.set_trace()
         x0 = encoder_outputs[inputs['agent_index'], :] # [B,20,D]
-        
+
+        # Inject Lopt into encoder_outputs
+        L_embed = self.Length_embedder(L_opt)  # [B, D]
+        x0 = x0 + L_embed.unsqueeze(1) 
+
+        # decode to displacement
         x0 = self.mlp(x0)   # [B, 20,2 ]
         # x0 = x0.view(-1, self.history_steps, 2)                 # [B, 20, 2]
-        gt = inputs['x'][inputs['agent_index'], :,:2]  # [B, 20, 2]
+        
+        #gt = inputs['x'][inputs['agent_index'], :,:2]  # [B, 20, 2]
+        gt = inputs.x_copy[inputs.agent_index, :, :2]
         # keep the last two frame pos and last displacement
         x0[:, -1, :] = gt[:, -1, :] # [B, P, 20, 2]
         

@@ -80,25 +80,35 @@ def random_mask_agent_history(inputs, min_keep=2, history_steps=20):
 
     return inputs
 
-def recalculate_masks(inputs, Lopt,history_steps=20):
-    new_padding_mask = inputs['padding_mask'].clone()
-    new_bos_mask = inputs['bos_mask'].clone()
-    agent_indices = inputs['agent_index']  # shape: [B]
-    B = agent_indices.shape[0]
-    for i in range(B):
-        agent_id = agent_indices[i]
-        # 2. Update padding mask for the agent only
-        new_padding_mask[agent_id, :history_steps - Lopt[i]] = True
-        new_padding_mask[agent_id, history_steps - Lopt[i]:history_steps] = False
 
-        # 3. Update bos mask for the agent
-        new_bos_mask[agent_id, 0] = ~new_padding_mask[agent_id, 0]
-        new_bos_mask[agent_id, 1:history_steps] = new_padding_mask[agent_id, :history_steps - 1] & ~new_padding_mask[agent_id, 1:history_steps]
-    
-    inputs['padding_mask'] = new_padding_mask
-    inputs['bos_mask'] = new_bos_mask
-    
+def recalculate_masks(inputs, Lopt, history_steps=20):
+    B = Lopt.shape[0]
+    Lopt = Lopt.long()
+
+    # [B, history_steps]
+    t = torch.arange(history_steps, device=Lopt.device).unsqueeze(0).expand(B, -1)
+    keep_start = (history_steps - Lopt).unsqueeze(1)
+
+    new_padding_mask = t < keep_start  # True = mask
+
+    bos_first = ~new_padding_mask[:, 0:1]  # [B,1]
+    bos_rest = new_padding_mask[:, :-1] & ~new_padding_mask[:, 1:]  # [B,history_steps-1]
+    new_bos_mask = torch.cat([bos_first, bos_rest], dim=1)  # [B, history_steps]
+
+    # Clone original masks
+    padding_mask = inputs['padding_mask'].clone()
+    bos_mask = inputs['bos_mask'].clone()
+
+    # Update only the first `history_steps` of agent_index rows
+    padding_mask[inputs['agent_index'], :history_steps] = new_padding_mask
+    bos_mask[inputs['agent_index'], :history_steps] = new_bos_mask
+
+    # Assign back
+    inputs['padding_mask'] = padding_mask
+    inputs['bos_mask'] = bos_mask
+
     return inputs
+
 
 def mask_x_gt_by_lopt(x_gt: torch.Tensor, L_opt: torch.Tensor) -> torch.Tensor:
     """
