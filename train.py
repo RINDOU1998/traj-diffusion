@@ -339,9 +339,20 @@ def model_training(args):
             print({f"train_loss/{k}": v for k, v in train_loss.items()} , "epoch: ", epoch+1)
             print({f"lr/{k}": v for k, v in lr_dict.items()}, "epoch: ", epoch+1)
             # validation
-            val_ade, val_fde, val_mr, val_loss = validation_epoch(diffusion_planner, val_loader, args.device)
+            val_ade, val_fde, val_mr, val_loss, val_recon_loss, val_seen_recon_loss, val_unseen_recon_loss, recon_loss_matrix = validation_epoch(diffusion_planner, val_loader, args.device)
             wandb_logger.log_metrics({"val/ade": val_ade, "val/fde": val_fde, "val/mr": val_mr, "val/loss": val_loss}, step=epoch+1)
-            
+           
+            wandb_logger.log_metrics({
+                'val/recon_loss': val_recon_loss,
+                'val/seen_recon_loss': val_seen_recon_loss,
+                'val/unseen_recon_loss': val_unseen_recon_loss,
+            }, step=epoch+1)
+
+            wandb_logger.log_matrix_image(recon_loss_matrix.loss_matrix, 'recon/loss_matrix', epoch+1)
+            wandb_logger.log_matrix_image(recon_loss_matrix.count_matrix, 'recon/count_matrix', epoch+1)
+            wandb_logger.log_matrix_image(recon_loss_matrix.seen_loss_matrix, 'recon/seen_loss_matrix', epoch+1)
+            wandb_logger.log_matrix_image(recon_loss_matrix.unseen_loss_matrix, 'recon/unseen_loss_matrix', epoch+1)
+
 
             if (epoch+1) % args.save_utd == 0:
                 # save model at the end of epoch
@@ -391,7 +402,7 @@ def model_validation(args):
         )
     
     # run validation
-    val_ade, val_fde, val_mr, rec_loss = validation_epoch(diffusion_planner, val_loader, args.device)
+    val_ade, val_fde, val_mr, rec_loss , val_recon_loss, val_seen_recon_loss, val_unseen_recon_loss, recon_loss_matrix  = validation_epoch(diffusion_planner, val_loader, args.device)
 
     if global_rank == 0:
         print(f"\n✅ Validation Metrics:\n - ADE: {val_ade:.4f}\n - FDE: {val_fde:.4f}\n - Miss Rate: {val_mr:.4f} - Reconstruction Loss: {rec_loss:.4f}")

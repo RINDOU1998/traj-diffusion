@@ -112,7 +112,8 @@ class Traj_Diffusion(nn.Module):
         L_opt = L_opt[inputs['agent_index']]  # [B] # get the L_opt for the agent
         mask = mask[inputs['agent_index']]  # [B, T_max] # get the mask for the agent
         
-        
+        inputs['L_opt'] = L_opt
+        inputs['mask'] = mask
 
         # reconstruction module
         decoder_outputs = self.decoder(encoder_outputs, inputs, L_opt)
@@ -132,7 +133,9 @@ class Traj_Diffusion(nn.Module):
         mask= mask.unsqueeze(-1)  # [B, 20, 1]
         
 
+
         decoder_outputs['gt'] = torch.where(mask, torch.zeros_like(decoder_outputs['gt']), decoder_outputs['gt'])  # mask gt in decoder outputs
+        inputs['x_gt'] = decoder_outputs['gt'] 
         decoder_outputs['score'] = torch.where(mask, torch.zeros_like(decoder_outputs['score']), decoder_outputs['score'])  # [B, T, 2] # mask the score by L_opt
         
         # NOTE: debug here , fix the gt with Lopt mask 

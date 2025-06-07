@@ -1,5 +1,7 @@
 import os
 from torch.utils.tensorboard import SummaryWriter
+import torchvision.transforms as transforms
+import torch
 
 import wandb
 
@@ -40,3 +42,30 @@ class TensorBoardLogger():
     def finish(self):
        if self.writer is not None:
             self.writer.close()
+
+    def log_matrix_image(self, matrix: torch.Tensor, tag: str, step: int, normalize=True):
+            """
+            Logs a 2D tensor (e.g., loss matrix) as an image to TensorBoard.
+            
+            Args:
+                matrix (torch.Tensor): 2D tensor of shape [H, W]
+                tag (str): Name for this image (e.g., 'recon/loss_matrix')
+                step (int): Global step (usually epoch)
+                normalize (bool): Whether to normalize matrix to [0, 1]
+            """
+            if self.writer is None:
+                return
+
+            matrix = matrix.clone().detach().float().cpu()  # Ensure it's on CPU
+            if normalize:
+                matrix -= matrix.min()
+                if matrix.max() > 0:
+                    matrix /= matrix.max()
+
+            # Convert to [1, H, W] for grayscale image
+            img = matrix.unsqueeze(0)
+
+            # Optional: upscale for visibility
+            img = transforms.Resize((190, 190))(img)
+
+            self.writer.add_image(tag, img, global_step=step)

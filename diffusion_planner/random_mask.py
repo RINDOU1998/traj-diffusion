@@ -72,6 +72,7 @@ def random_mask_agent_history(inputs, min_keep=2, history_steps=20):
 
     # Set updated values back into inputs
     inputs['x_copy']= inputs['x'].clone()
+    inputs['x_random_mask'] = x
     inputs['x'] = x
     inputs['padding_mask'] = new_padding_mask
     inputs['bos_mask'] = new_bos_mask
