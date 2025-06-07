@@ -4,6 +4,39 @@ import torchvision.transforms as transforms
 import torch
 
 import wandb
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def save_matrix_heatmap(matrix, title, save_path):
+    """
+    Save a heatmap of the given matrix with annotations and good readability.
+    
+    Args:
+        matrix (torch.Tensor): 2D tensor of shape [19, 19]
+        title (str): Plot title
+        save_path (str): Full path to save the figure
+    """
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    matrix = matrix.detach().cpu().numpy()
+
+    plt.figure(figsize=(12, 10))  # ✅ Bigger figure
+    ax = sns.heatmap(
+        matrix,
+        annot=True,
+        fmt=".3f",
+        cmap="viridis",
+        xticklabels=range(2, 21),
+        yticklabels=range(2, 21),
+        annot_kws={"size": 8}  # ✅ Smaller annotation text
+    )
+    ax.set_xlabel("L_opt", fontsize=12)
+    ax.set_ylabel("H", fontsize=12)
+    ax.set_title(title, fontsize=14)
+    plt.xticks(rotation=45)
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
 
 class TensorBoardLogger():
     def __init__(self, run_name, notes, args, wandb_resume_id, save_path, rank=0):

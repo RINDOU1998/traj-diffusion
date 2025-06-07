@@ -13,6 +13,7 @@ from diffusion_planner.utils.train_utils import set_seed, save_model, resume_mod
 from diffusion_planner.utils.normalizer import ObservationNormalizer, StateNormalizer
 from diffusion_planner.utils.lr_schedule import CosineAnnealingWarmUpRestarts
 from diffusion_planner.utils.tb_log import TensorBoardLogger as Logger
+from diffusion_planner.utils.tb_log import save_matrix_heatmap
 #from diffusion_planner.utils.data_augmentation import StatePerturbation
 #from diffusion_planner.utils.dataset import DiffusionPlannerData
 from diffusion_planner.utils import ddp
@@ -391,7 +392,16 @@ def model_validation(args):
                             num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=False)
     
    
+    from datetime import datetime
+    time = datetime.now()
+    time = time.strftime("%Y-%m-%d-%H:%M:%S")
 
+    save_path = f"{args.save_dir}/training_log/{args.name}/{time}/"
+    os.makedirs(save_path, exist_ok=True)
+    wandb_logger = Logger(args.name, args.notes, args, wandb_resume_id=None, save_path=save_path, rank=global_rank) 
+    
+    
+    
     diffusion_planner = Traj_Diffusion(args).to(args.device)
     diffusion_planner.set_stage("joint")
 
@@ -402,10 +412,24 @@ def model_validation(args):
         )
     
     # run validation
-    val_ade, val_fde, val_mr, rec_loss , val_recon_loss, val_seen_recon_loss, val_unseen_recon_loss, recon_loss_matrix  = validation_epoch(diffusion_planner, val_loader, args.device)
+    val_ade, val_fde, val_mr, val_loss , val_recon_loss, val_seen_recon_loss, val_unseen_recon_loss, recon_loss_matrix  = validation_epoch(diffusion_planner, val_loader, args.device)
+    wandb_logger.log_metrics({"val/ade": val_ade, "val/fde": val_fde, "val/mr": val_mr, "val/loss": val_loss}, step=1)
+           
+    wandb_logger.log_metrics({
+        'val/recon_loss': val_recon_loss,
+        'val/seen_recon_loss': val_seen_recon_loss,
+        'val/unseen_recon_loss': val_unseen_recon_loss,
+    }, step=1)
+    
+    epoch_id = 1  # or any step index you use
 
+    save_matrix_heatmap(recon_loss_matrix["loss_matrix"], "Reconstruction Loss Matrix", f"{save_path}/loss_matrix/{epoch_id}.png")
+    save_matrix_heatmap(recon_loss_matrix["count_matrix"], "Count Matrix", f"{save_path}/count_matrix/{epoch_id}.png")
+    save_matrix_heatmap(recon_loss_matrix["seen_loss_matrix"], "Seen Loss Matrix", f"{save_path}/seen_loss_matrix/{epoch_id}.png")
+    save_matrix_heatmap(recon_loss_matrix["unseen_loss_matrix"], "Unseen Loss Matrix", f"{save_path}/unseen_loss_matrix/{epoch_id}.png")
+    
     if global_rank == 0:
-        print(f"\n✅ Validation Metrics:\n - ADE: {val_ade:.4f}\n - FDE: {val_fde:.4f}\n - Miss Rate: {val_mr:.4f} - Reconstruction Loss: {rec_loss:.4f}")
+        print(f"\n✅ Validation Metrics:\n - ADE: {val_ade:.4f}\n - FDE: {val_fde:.4f}\n - Miss Rate: {val_mr:.4f} - Reconstruction Loss: {val_recon_loss:.4f}")
 
 
 
