@@ -349,10 +349,13 @@ def model_training(args):
                 'val/unseen_recon_loss': val_unseen_recon_loss,
             }, step=epoch+1)
 
-            wandb_logger.log_matrix_image(recon_loss_matrix.loss_matrix, 'recon/loss_matrix', epoch+1)
-            wandb_logger.log_matrix_image(recon_loss_matrix.count_matrix, 'recon/count_matrix', epoch+1)
-            wandb_logger.log_matrix_image(recon_loss_matrix.seen_loss_matrix, 'recon/seen_loss_matrix', epoch+1)
-            wandb_logger.log_matrix_image(recon_loss_matrix.unseen_loss_matrix, 'recon/unseen_loss_matrix', epoch+1)
+            epoch_id = epoch + 1  # or any step index you use
+
+            save_matrix_heatmap(recon_loss_matrix["loss_matrix"], "Reconstruction Loss Matrix", f"{save_path}/loss_matrix/{epoch_id}.png")
+            save_matrix_heatmap(recon_loss_matrix["count_matrix"], "Count Matrix", f"{save_path}/count_matrix/{epoch_id}.png")
+            save_matrix_heatmap(recon_loss_matrix["seen_loss_matrix"], "Seen Loss Matrix", f"{save_path}/seen_loss_matrix/{epoch_id}.png")
+            save_matrix_heatmap(recon_loss_matrix["unseen_loss_matrix"], "Unseen Loss Matrix", f"{save_path}/unseen_loss_matrix/{epoch_id}.png")
+    
 
 
             if (epoch+1) % args.save_utd == 0:

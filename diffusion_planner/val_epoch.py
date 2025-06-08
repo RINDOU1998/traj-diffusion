@@ -157,6 +157,11 @@ def validation_epoch(model, val_loader, device, show=False):
     avg_total_seen_loss = total_seen_loss / seen_count_matrix.sum()
     avg_total_unseen_loss = total_unseen_loss / unseen_count_matrix.sum()
 
+
+    loss_matrix[count_matrix > 0] /= count_matrix[count_matrix > 0]
+    seen_loss_matrix[seen_count_matrix > 0] /= seen_count_matrix[seen_count_matrix > 0]
+    unseen_loss_matrix[unseen_count_matrix > 0] /= unseen_count_matrix[unseen_count_matrix > 0]
+    
     recon_loss_matrix = {
         "loss_matrix": loss_matrix,
         "count_matrix": count_matrix,
