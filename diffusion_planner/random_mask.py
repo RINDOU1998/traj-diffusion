@@ -36,6 +36,7 @@
 
 
 import torch
+import random
 
 def random_mask_agent_history(inputs, min_keep=2, history_steps=20):
     # Clone original data
@@ -49,7 +50,9 @@ def random_mask_agent_history(inputs, min_keep=2, history_steps=20):
     B = agent_indices.shape[0]
 
     # 1. Randomly generate number of history steps to keep for each agent
-    H = torch.randint(low=min_keep, high=history_steps + 1, size=(B,), device=x.device)  # [B]
+    # H = torch.randint(low=min_keep, high=history_steps + 1, size=(B,), device=x.device)  # [B]
+    H, L_opt = generate_h_lopt_pairs(B,device=x.device)
+    
 
     for i in range(B):
         agent_id = agent_indices[i]
@@ -78,8 +81,22 @@ def random_mask_agent_history(inputs, min_keep=2, history_steps=20):
     inputs['bos_mask'] = new_bos_mask
     # Add the length after mask H into inputs
     inputs['H'] = H
+    inputs["L_opt"] = L_opt
 
     return inputs
+
+def generate_h_lopt_pairs(batch_size, device):
+    # Generate all valid (H, L_opt) pairs where L_opt > H
+    valid_pairs = [(h, l) for h in range(2, 20) for l in range(2, 21) if l > h]
+    
+    # Uniformly sample batch_size pairs
+    chosen_pairs = random.choices(valid_pairs, k=batch_size)
+
+    # Convert to tensors on specified device
+    H = torch.tensor([h for h, _ in chosen_pairs], dtype=torch.long, device=device)
+    L_opt = torch.tensor([l for _, l in chosen_pairs], dtype=torch.long, device=device)
+
+    return H, L_opt
 
 
 def recalculate_masks(inputs, Lopt, history_steps=20):
@@ -140,3 +157,18 @@ def mask_x_gt_by_lopt(x_gt: torch.Tensor, L_opt: torch.Tensor) -> torch.Tensor:
     masked_x_gt = torch.where(keep_mask, x_gt, torch.zeros_like(x_gt))
 
     return masked_x_gt
+
+
+def generate_displacement_mask( L_opt, T=20):
+    """
+    Args:
+        L_opt: [B], values in [2, T]
+    Returns:
+        mask: [B, T] boolean mask. True = masked, False = keep
+    """
+    B = L_opt.shape[0]
+    idx = torch.arange(T, device=L_opt.device).unsqueeze(0).expand(B, -1)  # [B, T]
+    keep_start = (T - L_opt).unsqueeze(1)  # [B, 1]
+    # Mask positions where idx <= keep_start
+    mask = idx <= keep_start  # [B, T]
+    return mask

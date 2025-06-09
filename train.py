@@ -125,7 +125,7 @@ def get_args():
                     help="# epochs to train prediction only")
     parser.add_argument('--seed', type=int, help='fix random seed', default=3407)
     parser.add_argument('--train_epochs', type=int, help='epochs of training', default=30)
-    parser.add_argument('--save_utd', type=int, help='save frequency', default=20)
+    parser.add_argument('--save_utd', type=int, help='save frequency', default=2)
     parser.add_argument('--batch_size', type=int, help='batch size (default: 32)', default=32)
     parser.add_argument('--learning_rate', type=float, help='learning rate (default: 5e-4)', default=5e-4)
 
@@ -294,12 +294,34 @@ def model_training(args):
         diffusion_planner.set_stage("recon")
         for e in range(args.recon_epochs):
             print(f"[Recon] Epoch {e+1}/{args.recon_epochs}")
+
+            # Training
             train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args)
             wandb_logger.log_metrics({f"train_loss/{k}": v for k, v in train_loss.items()}, step=e+1)
             recon_losses.append(train_total_loss)
-            ade  = rec_validation_epoch(diffusion_planner, val_loader, args.device)
-            wandb_logger.log_metrics({"val/ade": ade}, step=e+1)
             
+            # === Validation ===
+            recon_stats = rec_validation_epoch(diffusion_planner, val_loader, args.device)
+            
+            # === Log scalar losses ===
+            wandb_logger.log_metrics({
+                "val/total_recon_loss": recon_stats["avg_total_recon_loss"],
+                "val/seen_recon_loss": recon_stats["avg_total_seen_loss"],
+                "val/unseen_recon_loss": recon_stats["avg_total_unseen_loss"]
+            }, step=e + 1)
+
+            # === Save heatmaps ===
+            epoch_id = e + 1
+            save_matrix_heatmap(recon_stats["loss_matrix"], "Reconstruction Loss Matrix", f"{save_path}/loss_matrix/{epoch_id}.png")
+            save_matrix_heatmap(recon_stats["count_matrix"], "Count Matrix", f"{save_path}/count_matrix/{epoch_id}.png")
+            save_matrix_heatmap(recon_stats["seen_loss_matrix"], "Seen Loss Matrix", f"{save_path}/seen_loss_matrix/{epoch_id}.png")
+            save_matrix_heatmap(recon_stats["unseen_loss_matrix"], "Unseen Loss Matrix", f"{save_path}/unseen_loss_matrix/{epoch_id}.png")
+
+            if (e+1) % args.save_utd == 0:
+                # save model at the end of epoch
+               
+                save_model(diffusion_planner, optimizer, scheduler, save_path, e, train_total_loss, wandb_logger.id)
+                print(f"Model saved in {save_path}\n")
 
 
     # Phase 2: prediction head
@@ -435,12 +457,62 @@ def model_validation(args):
         print(f"\n✅ Validation Metrics:\n - ADE: {val_ade:.4f}\n - FDE: {val_fde:.4f}\n - Miss Rate: {val_mr:.4f} - Reconstruction Loss: {val_recon_loss:.4f}")
 
 
+def rec_validation(args):
+    global_rank, rank, _ = ddp.ddp_setup_universal(True, args)
+
+    if global_rank == 0:
+        print(f"\n🧪 Running One-Time Reconstruction Validation for {args.name} on {args.device}")
+
+    set_seed(args.seed)
+
+    val_set = ArgoverseV1Dataset(args.root, 'val', None, args.local_radius)
+    val_loader = DataLoader(val_set, batch_size=args.val_batch_size, shuffle=False,
+                            num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=False)
+
+    from datetime import datetime
+    time = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    save_path = f"{args.save_dir}/training_log/{args.name}/{time}/"
+    os.makedirs(save_path, exist_ok=True)
+
+    wandb_logger = Logger(args.name, args.notes, args, wandb_resume_id=None, save_path=save_path, rank=global_rank)
+
+    diffusion_planner = Traj_Diffusion(args).to(args.device)
+    diffusion_planner.set_stage("recon")
+
+    if args.resume_model_path:
+        print(f"🔄 Loading checkpoint from: {args.resume_model_path}")
+        diffusion_planner, _, _, _, _, _ = resume_model(
+            args.resume_model_path, diffusion_planner, None, None, None, args.device
+        )
+
+    # === Validation ===
+    recon_stats = rec_validation_epoch(diffusion_planner, val_loader, args.device)
+
+    # === Log scalar metrics ===
+    wandb_logger.log_metrics({
+        "val/total_recon_loss": recon_stats["avg_total_recon_loss"],
+        "val/seen_recon_loss": recon_stats["avg_total_seen_loss"],
+        "val/unseen_recon_loss": recon_stats["avg_total_unseen_loss"]
+    }, step=1)
+
+    # === Save heatmaps ===
+    epoch_id = 1
+    save_matrix_heatmap(recon_stats["loss_matrix"], "Reconstruction Loss Matrix", f"{save_path}/loss_matrix/{epoch_id}.png")
+    save_matrix_heatmap(recon_stats["count_matrix"], "Count Matrix", f"{save_path}/count_matrix/{epoch_id}.png")
+    save_matrix_heatmap(recon_stats["seen_loss_matrix"], "Seen Loss Matrix", f"{save_path}/seen_loss_matrix/{epoch_id}.png")
+    save_matrix_heatmap(recon_stats["unseen_loss_matrix"], "Unseen Loss Matrix", f"{save_path}/unseen_loss_matrix/{epoch_id}.png")
+
+    if global_rank == 0:
+        print(f"\n✅ Validation Results:")
+        print(f" - Total Recon Loss: {recon_stats['avg_total_recon_loss']:.4f}")
+        print(f" - Seen Recon Loss: {recon_stats['avg_total_seen_loss']:.4f}")
+        print(f" - Unseen Recon Loss: {recon_stats['avg_total_unseen_loss']:.4f}")
 
 
 if __name__ == "__main__":
     args = get_args()
 
     if args.do_validation:
-        model_validation(args)
+        rec_validation(args)
     else:
         model_training(args)

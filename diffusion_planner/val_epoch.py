@@ -111,7 +111,9 @@ def validation_epoch(model, val_loader, device, show=False):
             l = int(L_opt[i].item())
             if 2 <= h <= 20 and 2 <= l <= 20:
                 h_idx, l_idx = h - 2, l - 2
-                start_idx = T - l
+
+                # NOTE check here
+                start_idx = T - l + 1
                 seen_len = min(h - 1, l - 1)
                 unseen_len = max(0, l - h)
 

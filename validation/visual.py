@@ -108,7 +108,7 @@ def reconstruct_absolute_position_from_last_frame(x0, inputs, reverse_rotation =
 
 
 
-def batch_output_to_np_list(inputs,inputs2, x0, y_hat, val_data_folder,radius=2.5):
+def batch_output_to_np_list(inputs,inputs2, x0, y_hat, val_data_folder,only_recon =False ,radius=2.5):
     """
     Converts batched model outputs into lists of numpy arrays for visualization.
     
@@ -126,17 +126,13 @@ def batch_output_to_np_list(inputs,inputs2, x0, y_hat, val_data_folder,radius=2.
             centerline_list: list of [list of np.ndarray] per graph
             city_name_list: list of city name strings per graph
     """
-    input_np_list = []
-    output_np_list = []
-    target_np_list = []
-    centerline_list = []
-    city_name_list = []
+    
 
     scene_list = []
     avm = ArgoverseMap()
 
 
-    seq_ids = inputs.seq_id.cpu().numpy()
+    seq_ids = inputs2.seq_id.cpu().numpy()
     for seq_id in seq_ids:
 
         raw_data_path = os.path.join(val_data_folder, str(seq_id) + '.csv')
@@ -189,114 +185,120 @@ def batch_output_to_np_list(inputs,inputs2, x0, y_hat, val_data_folder,radius=2.
                             } )
 
     
-    
-    # recalculate y_hat absolute pos
-    # Step 0: y_hat only for agent
-    y_hat = y_hat[:, inputs['agent_index'], :, :2]  # [F, B, 30, 2]
-    inv_actor_rot = inputs2['rotate_mat'][inputs['agent_index'],:,:].transpose(1, 2)  # [B, 2, 2]
-    # Step 1: Undo agent heading rotation
-    # print("inv_actor_rot shape:", inv_actor_rot.shape)  # [B, 2, 2]
-    F, B, H, _ = y_hat.shape 
-    y_hat_flat = y_hat.reshape(F * B, H, 2)             # [F*N, H, 2]
-    # print("y_hat_flat shape:", y_hat_flat.shape)  # [F*N, H, 2]
-    inv_actor_rot = inv_actor_rot.unsqueeze(0).expand(F, -1, -1, -1)  # [F, B, 2, 2]
-    # print("inv_actor_rot shape:", inv_actor_rot.shape)  # [F, B, 2, 2]
-    inv_rot_flat = inv_actor_rot.reshape(F * B, 2, 2)     # [F*B, 2, 2]
-    # print("inv_rot_flat shape:", inv_rot_flat.shape)  # [F*B, 2, 2]
-    y_hat_scene = torch.bmm(y_hat_flat, inv_rot_flat)    # [F*N, H, 2]
-    # print("y_hat_scene shape:", y_hat_scene.shape)  # [F*B, H, 2]
-    # Step 2: Add last observed position
-    x_last = inputs2['positions'][inputs['agent_index'], 19, :]  # [B, 2]
-    # Repeat for F modes
-    x_last_repeat = x_last.unsqueeze(0).expand(F, -1, -1)  # [F, B, 2]
-    x_last_flat = x_last_repeat.reshape(F * B, 1, 2)       # [F*B, 1, 2]
-    # Add to y_hat_scene
-    y_hat_centered = y_hat_scene + x_last_flat             # [F*B, H, 2]
-    # print("y_hat_centered shape:", y_hat_centered.shape)   # [F*B, H, 2]
-    # Step 3: Undo AV-centric rotation    
-    theta = inputs['theta']  # [B]
-    cos_theta = torch.cos(theta)
-    sin_theta = torch.sin(theta)
-    # Construct AV-centric rotation matrix (B, 2, 2)
-    av_rot_mat = torch.stack([
-        cos_theta, -sin_theta,
-        sin_theta, cos_theta
-    ], dim=1).view(B, 2, 2)
-    # Inverse = transpose
-    inv_scene_rot = av_rot_mat.transpose(1, 2)         # [B, 2, 2]
-    # Repeat to match F modes
-    inv_scene_rot = inv_scene_rot.unsqueeze(0).expand(F, -1, -1, -1)  # [F, B, 2, 2]
-    inv_scene_rot_flat = inv_scene_rot.reshape(F * B, 2, 2)           # [F*B, 2, 2]
-    # Apply inverse rotation
-    y_hat_global = torch.bmm(y_hat_centered, inv_scene_rot_flat)     # [F*B, H, 2]
-    # print( f"y_hat_global.shape : {y_hat_global.shape}")
-    # Step 4: Add global origin
-    origin = inputs['origin']  # [B, 2]
-    origin_expanded = origin.unsqueeze(0).expand(F, -1, -1).reshape(F * B, 1, 2)  # [F * B, 1, 2]
-    y_hat_global = y_hat_global + origin_expanded  # [F * B, H, 2]
-    y_hat = y_hat_global.reshape(F,B,H,2)
-    # print(f"y_hashapet:{y_hat.shape}")  
-    #print(f"yhat after{y_hat}") 
-    y_hat = y_hat.cpu().numpy()  # convert to NumPy if still in torch.Tensor
+    if not only_recon:
+        # recalculate y_hat absolute pos
+        # Step 0: y_hat only for agent
+        y_hat = y_hat[:, inputs2['agent_index'], :, :2]  # [F, B, 30, 2]
+        inv_actor_rot = inputs2['rotate_mat'][inputs2['agent_index'],:,:].transpose(1, 2)  # [B, 2, 2]
+        # Step 1: Undo agent heading rotation
+        # print("inv_actor_rot shape:", inv_actor_rot.shape)  # [B, 2, 2]
+        F, B, H, _ = y_hat.shape 
+        y_hat_flat = y_hat.reshape(F * B, H, 2)             # [F*N, H, 2]
+        # print("y_hat_flat shape:", y_hat_flat.shape)  # [F*N, H, 2]
+        inv_actor_rot = inv_actor_rot.unsqueeze(0).expand(F, -1, -1, -1)  # [F, B, 2, 2]
+        # print("inv_actor_rot shape:", inv_actor_rot.shape)  # [F, B, 2, 2]
+        inv_rot_flat = inv_actor_rot.reshape(F * B, 2, 2)     # [F*B, 2, 2]
+        # print("inv_rot_flat shape:", inv_rot_flat.shape)  # [F*B, 2, 2]
+        y_hat_scene = torch.bmm(y_hat_flat, inv_rot_flat)    # [F*N, H, 2]
+        # print("y_hat_scene shape:", y_hat_scene.shape)  # [F*B, H, 2]
+        # Step 2: Add last observed position
+        x_last = inputs2['positions'][inputs2['agent_index'], 19, :]  # [B, 2]
+        # Repeat for F modes
+        x_last_repeat = x_last.unsqueeze(0).expand(F, -1, -1)  # [F, B, 2]
+        x_last_flat = x_last_repeat.reshape(F * B, 1, 2)       # [F*B, 1, 2]
+        # Add to y_hat_scene
+        y_hat_centered = y_hat_scene + x_last_flat             # [F*B, H, 2]
+        # print("y_hat_centered shape:", y_hat_centered.shape)   # [F*B, H, 2]
+        # Step 3: Undo AV-centric rotation    
+        theta = inputs2['theta']  # [B]
+        cos_theta = torch.cos(theta)
+        sin_theta = torch.sin(theta)
+        # Construct AV-centric rotation matrix (B, 2, 2)
+        av_rot_mat = torch.stack([
+            cos_theta, -sin_theta,
+            sin_theta, cos_theta
+        ], dim=1).view(B, 2, 2)
+        # Inverse = transpose
+        inv_scene_rot = av_rot_mat.transpose(1, 2)         # [B, 2, 2]
+        # Repeat to match F modes
+        inv_scene_rot = inv_scene_rot.unsqueeze(0).expand(F, -1, -1, -1)  # [F, B, 2, 2]
+        inv_scene_rot_flat = inv_scene_rot.reshape(F * B, 2, 2)           # [F*B, 2, 2]
+        # Apply inverse rotation
+        y_hat_global = torch.bmm(y_hat_centered, inv_scene_rot_flat)     # [F*B, H, 2]
+        # print( f"y_hat_global.shape : {y_hat_global.shape}")
+        # Step 4: Add global origin
+        origin = inputs2['origin']  # [B, 2]
+        origin_expanded = origin.unsqueeze(0).expand(F, -1, -1).reshape(F * B, 1, 2)  # [F * B, 1, 2]
+        y_hat_global = y_hat_global + origin_expanded  # [F * B, H, 2]
+        y_hat = y_hat_global.reshape(F,B,H,2)
+        # print(f"y_hashapet:{y_hat.shape}")  
+        #print(f"yhat after{y_hat}") 
+        y_hat = y_hat.cpu().numpy()  # convert to NumPy if still in torch.Tensor
+
+        
+        # Result: list of length B; each item is a list of F arrays with shape [1, H, 2]
+        y_hat_list = [
+            [y_hat[f, b][:, :] for f in range(F)]  # [1, H, 2]
+            for b in range(B)
+        ]
+        for i in range(B):
+            scene_list[i]["output"] = [y_hat_list[i]]
+    else:
+        # when recon , output is X after random mask
+        x_random_mask = inputs2["x"][inputs2['agent_index']]
+        B, T, _ = x_random_mask.shape
+        # —— 1. 累积位移变成 AV-centric 下的绝对轨迹（相对 agent 第一帧） ——
+        # rel_hist = x0.cumsum(dim=1)            # [B, 20, 2]
+        rev_cumsum = torch.flip(x_random_mask, dims=[1]).cumsum(dim=1)     # [B, 20, 2]
+        rel_hist = torch.flip(rev_cumsum, dims=[1])             # [B, 20, 2]
+        # —— 2. 拿回 AV-centric 坐标下 agent 第0帧的位置 ——
+        # init_rot = inputs2['positions'][inputs2['agent_index'], 0]  # [B, 2]
+        last_position = inputs2['positions'][inputs2['agent_index'], 19]  # [B, 2]
+        # —— 3. 加回初始位置 ——
+        # abs_rot = rel_hist + init_rot.unsqueeze(1)        # [B, 20, 2]
+        abs_rot = -rel_hist + last_position.unsqueeze(1)   
+        # —— 4. 构造 AV-centric 旋转矩阵并取逆 —— 
+        theta = inputs2['theta']                          # [B]
+        cos_t = torch.cos(theta)
+        sin_t = torch.sin(theta)
+        scene_R = torch.stack([
+            torch.stack([cos_t, -sin_t], dim=1),
+            torch.stack([sin_t,  cos_t], dim=1)
+        ], dim=1)  # [B, 2, 2]
+        inv_scene_R = scene_R.transpose(1, 2)             # [B, 2, 2]
+        # —— 5. 旋转到原始全局坐标系 ——
+        global_rot = torch.bmm(abs_rot, inv_scene_R)  # [B, 20, 2]
+        # —— 6. 加回原始 AV 的全局位置（origin） ——
+        origin = inputs2['origin']                         # [B, 2]
+        global_hist = global_rot + origin.unsqueeze(1)    # [B, 20, 2]
+        global_hist = global_hist.cpu().numpy()
+        for i in range(B):
+            scene_list[i]["output"] = global_hist[i]
 
     
-    # Result: list of length B; each item is a list of F arrays with shape [1, H, 2]
-    y_hat_list = [
-        [y_hat[f, b][:, :] for f in range(F)]  # [1, H, 2]
-        for b in range(B)
-    ]
-    # print(len(y_hat_list))
-    # print(len(y_hat_list[0]))
-    
-
-    #print(f"yhat:{y_hat_list[0][0].shape}")
-
-
-    # #agent_index = inputs['agent_index'].cpu() 
-    # #x0 = x0.squeeze(1)    # [B, 20, 2]
-    # disp = inputs['x'][ inputs['agent_index'] ]  # [B, 20, 2]
-    # print(f"x0:{x0}")
-    # # step 1 cumulative  displacement
-    # x0_absolute = disp.cumsum(dim=0)  
-    # print(f"x0_absolute: {x0_absolute}")  # [B, 20, 2]
-    # # step 2 undo agent heading rotation
-    # theta = inputs['theta'] 
-    # cos_theta = torch.cos(theta)
-    # sin_theta = torch.sin(theta)
-    # # Construct AV-centric rotation matrix (B, 2, 2)
-    # av_rot_mat = torch.stack([
-    #     cos_theta, -sin_theta,
-    #     sin_theta, cos_theta
-    # ], dim=1).view(B, 2, 2)
-    # inv_rot = av_rot_mat.transpose(1, 2)    # [B, 2, 2]
-    # x0_global = torch.bmm(x0_absolute, inv_rot)  # [B, 20, 2]
-    # # step 3 add origin
-    # x0_global = x0_global + origin.unsqueeze(1)
-    # x0_global = x0_global.cpu().numpy()  # convert to NumPy if still in torch.Tensor
-    # print(f"x0_global : {x0_global}")  # [B, 20, 2]
-
-    # pos =  inputs['positions'][inputs['agent_index'], 19, :]
-
-
-   
-    # —— 1. 取出 agent 的位移历史 （已在 AV-centric 下，x[:,0]=0） ——
-    # agent_idx = inputs['agent_index']
-    # disp       = inputs['x'][agent_idx]            # [20, 2]
 
     x0 = x0.squeeze(1)    # [B, 20, 2]
     B, T, _ = x0.shape
+    
 
     # —— 1. 累积位移变成 AV-centric 下的绝对轨迹（相对 agent 第一帧） ——
-    rel_hist = x0.cumsum(dim=1)            # [B, 20, 2]
+    # rel_hist = x0.cumsum(dim=1)            # [B, 20, 2]
+
+
+    rev_cumsum = torch.flip(x0, dims=[1]).cumsum(dim=1)     # [B, 20, 2]
+    rel_hist = torch.flip(rev_cumsum, dims=[1])             # [B, 20, 2]
 
     # —— 2. 拿回 AV-centric 坐标下 agent 第0帧的位置 ——
-    init_rot = inputs2['positions'][inputs['agent_index'], 0]  # [B, 2]
+    # init_rot = inputs2['positions'][inputs2['agent_index'], 0]  # [B, 2]
+
+    last_position = inputs2['positions'][inputs2['agent_index'], 19]  # [B, 2]
 
     # —— 3. 加回初始位置 ——
-    abs_rot = rel_hist + init_rot.unsqueeze(1)        # [B, 20, 2]
+    # abs_rot = rel_hist + init_rot.unsqueeze(1)        # [B, 20, 2]
 
+    abs_rot = -rel_hist + last_position.unsqueeze(1)   
     # —— 4. 构造 AV-centric 旋转矩阵并取逆 —— 
-    theta = inputs['theta']                          # [B]
+    theta = inputs2['theta']                          # [B]
     cos_t = torch.cos(theta)
     sin_t = torch.sin(theta)
 
@@ -308,14 +310,9 @@ def batch_output_to_np_list(inputs,inputs2, x0, y_hat, val_data_folder,radius=2.
     inv_scene_R = scene_R.transpose(1, 2)             # [B, 2, 2]
 
     # —— 5. 旋转到原始全局坐标系 ——
-    # 需要 reshape 后用 bmm
-    # abs_rot_flat = abs_rot.reshape(B * T, 2)          # [B*T, 2]
-    # inv_rot_flat = inv_scene_R.repeat_interleave(T, dim=0)  # [B*T, 2, 2]
-    #global_rot = torch.bmm(abs_rot_flat.unsqueeze(1), inv_rot_flat).squeeze(1)  # [B*T, 2]
-    #global_rot = global_rot.reshape(B, T, 2)          # [B, 20, 2]
     global_rot = torch.bmm(abs_rot, inv_scene_R)  # [B, 20, 2]
     # —— 6. 加回原始 AV 的全局位置（origin） ——
-    origin = inputs['origin']                         # [B, 2]
+    origin = inputs2['origin']                         # [B, 2]
     global_hist = global_rot + origin.unsqueeze(1)    # [B, 20, 2]
     global_hist = global_hist.cpu().numpy()
 
@@ -340,8 +337,9 @@ def batch_output_to_np_list(inputs,inputs2, x0, y_hat, val_data_folder,radius=2.
     #print("dif:", dif)  # [20, 2]
 ############################################
     for i in range(B):
-        scene_list[i]["output"] = [y_hat_list[i]]
+        # scene_list[i]["output"] = [y_hat_list[i]]
         scene_list[i]["recon"] = global_hist[i]
+
 
     
     
@@ -351,15 +349,16 @@ def batch_output_to_np_list(inputs,inputs2, x0, y_hat, val_data_folder,radius=2.
 
 def viz_predictions(
     input_: np.ndarray,
-    output: List[np.ndarray],
+    output,
     target: np.ndarray,
     recon: np.ndarray,
     centerlines: List[List[np.ndarray]],
     city_names: List[str],
     idx: Union[int, None] = None,
     show: bool = True,
-    save_path: Union[str, None] = None
-) -> None:
+    save_path: Union[str, None] = None,
+    only_recon: bool = False,
+    ) -> None:
     """
     Visualize predicted trajectories alongside ground truth and map lanes.
 
@@ -375,6 +374,7 @@ def viz_predictions(
     """
     assert input_.shape[0] == len(centerlines) == len(city_names)
     print("ploting>>>>>>>>>>")
+    
     # print(len(output[0]))
     num_tracks = input_.shape[0]
     obs_len = input_.shape[1]
@@ -384,8 +384,10 @@ def viz_predictions(
     plt.figure(figsize=(12, 10))   # don't reuse old figure ID
     avm = ArgoverseMap()
 
-    plt.plot(recon[ :, 0], recon[ :, 1], "--", color="#001AFF", linewidth=2, zorder=15)
-    #plt.plot(recon[ -1, 0], recon[ -1, 1], "o", color="#001AFF", markersize=9, zorder=15)
+    # plt.plot(recon[ :, 0], recon[ :, 1], "--", color="#001AFF", linewidth=2, zorder=15)
+    plt.plot(recon[ :, 0], recon[ :, 1],  "o", color="#001AFF", markersize=1, zorder=15)
+
+    # plt.plot(recon[ -1, 0], recon[ -1, 1], "o", color="#001AFF", markersize=9, zorder=15)
 
     # Draw arrow pointing to the last point of recon
     x_end, y_end = recon[-1]
@@ -402,7 +404,9 @@ def viz_predictions(
 
     for i in range(num_tracks):
         # Plot observed trajectory
-        plt.plot(input_[i, :, 0], input_[i, :, 1],"--", color="#ECA154", linewidth=2, zorder=15)
+        plt.plot(input_[i, :, 0], input_[i, :, 1],"--", color="#ECA154", linewidth=1, zorder=15)
+        # plt.plot(input_[i, :, 0], input_[i, :, 1],"o", color="#ECA154", markersize=2, zorder=15)
+
         #plt.plot(input_[i, -1, 0], input_[i, -1, 1], "o", color="#ECA154", markersize=9, zorder=15)
         
         # Draw arrow pointing to the last point
@@ -426,9 +430,14 @@ def viz_predictions(
         # plt.plot(target[i, -1, 0], target[i, -1, 1], "o", color="#d33e4c", markersize=9, zorder=20)
 
         # Plot predicted trajectories
-        for j in range(len(output[i])):
-            plt.plot(output[i][j][:, 0], output[i][j][:, 1],"--", color="#007672", linewidth=2, zorder=15)
-            plt.plot(output[i][j][-1, 0], output[i][j][-1, 1], "o", color="#007672", markersize=3, zorder=15)
+        if not only_recon: 
+            for j in range(len(output[i])):
+                plt.plot(output[i][j][:, 0], output[i][j][:, 1],"--", color="#007672", linewidth=2, zorder=15)
+                plt.plot(output[i][j][-1, 0], output[i][j][-1, 1], "o", color="#007672", markersize=3, zorder=15)
+        else:
+            #plt.plot(output[ :, 0], output[ :, 1], "--", color="#007672" , linewidth=2, zorder=15)
+            plt.plot(output[ :, 0], output[ :, 1],  "o", color="#007672", markersize=1, zorder=15)
+            
 
         # Draw lane centerlines
         # for centerline in centerlines[i]:
