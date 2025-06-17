@@ -51,13 +51,17 @@ def random_mask_agent_history(inputs, min_keep=2, history_steps=20):
 
     # 1. Randomly generate number of history steps to keep for each agent
     # H = torch.randint(low=min_keep, high=history_steps + 1, size=(B,), device=x.device)  # [B]
-    H, L_opt = generate_h_lopt_pairs(B,device=x.device)
     
+    
+    H, L_opt = generate_h_lopt_pairs(B,device=x.device)
+    # H = torch.full((B,), 20,device=x.device)  # Creates a tensor of shape [B] filled with 20
+    # L_opt = torch.full((B,), 20,device=x.device)
 
     for i in range(B):
         agent_id = agent_indices[i]
 
         # 2. Update padding mask for the agent only
+        # padding mask here is for position
         new_padding_mask[agent_id, :history_steps - H[i]] = True
         new_padding_mask[agent_id, history_steps - H[i]:history_steps] = False
 
@@ -82,6 +86,7 @@ def random_mask_agent_history(inputs, min_keep=2, history_steps=20):
     # Add the length after mask H into inputs
     inputs['H'] = H
     inputs["L_opt"] = L_opt
+    
 
     return inputs
 

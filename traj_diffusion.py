@@ -98,9 +98,11 @@ class Traj_Diffusion(nn.Module):
 
             L_opt = inputs["L_opt"]
             mask = generate_displacement_mask(L_opt)
+            H_mask = generate_displacement_mask(inputs_h)
+            inputs["H_mask"] = H_mask
 
-            local_embedding , cls_token  = self.diffusion_encoder(inputs) # [N, 20, D], [N, D]
-            
+            local_embedding   = self.diffusion_encoder(inputs) # [N, 20, D], [N, D]
+            # import pdb; pdb.set_trace()
             
             # reconstruction module
             decoder_outputs = self.decoder(local_embedding, inputs, L_opt)
@@ -109,9 +111,19 @@ class Traj_Diffusion(nn.Module):
             gt = decoder_outputs['gt']  # [B, T, 2]
 
             mask= mask.unsqueeze(-1)  # [B, 20, 1]
+           
             decoder_outputs['gt'] = torch.where(mask, torch.zeros_like(decoder_outputs['gt']), decoder_outputs['gt'])  # mask gt in decoder outputs
+            
             inputs['x_gt'] = decoder_outputs['gt'] 
             decoder_outputs['score'] = torch.where(mask, torch.zeros_like(decoder_outputs['score']), decoder_outputs['score'])  # [B, T, 2] # mask the score by L_opt
+            
+            
+            #NOTE mask the seen part, for only unseen loss test
+            expand_H_mask = H_mask.unsqueeze(-1)
+            decoder_outputs['gt'] = torch.where(~expand_H_mask, torch.zeros_like(decoder_outputs['gt']), decoder_outputs['gt'])  # mask gt in decoder outputs
+            decoder_outputs['score'] = torch.where(~expand_H_mask, torch.zeros_like(decoder_outputs['score']), decoder_outputs['score'])  # [B, T, 2] # mask the score by L_opt
+
+            
             
     
             x0 = torch.where(mask, torch.zeros_like(x0), x0)  # [B, T, 2] # mask the x0 by L_opt

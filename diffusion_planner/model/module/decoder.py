@@ -281,7 +281,7 @@ class DiT(nn.Module):
         self.preproj = Mlp(in_features=output_dim, hidden_features=512, out_features=hidden_dim, act_layer=nn.GELU, drop=0.)
         self.t_embedder = TimestepEmbedder(hidden_dim) # add t_embedding into x_t instead of context
         self.Length_embedder = TimestepEmbedder(hidden_dim)
-        self.blocks = nn.ModuleList([DiTBlock(hidden_dim, heads, dropout, mlp_ratio) for i in range(depth)])
+        self.blocks = nn.ModuleList([iTBlock(hidden_dim, heads, dropout, mlp_ratio) for i in range(depth)])
         self.final_layer = FinalLayer(hidden_dim, output_dim)
         self._sde = sde
         self.marginal_prob_std = self._sde.marginal_prob_std

@@ -50,7 +50,7 @@ class MR(Metric):
 
 
 @torch.no_grad()
-def validation_epoch(model, val_loader, device,show = True ):
+def validation_epoch(model, val_loader, device,show = False ):
     model.eval()
     
     seen_ade_metric = ADE().to(device)
@@ -177,8 +177,8 @@ def update_matrix(x_recon, x_gt, inputs_h, L_opt,seen_ade_metric,unseen_ade_metr
                 total_seen_loss += loss_seen.item()
                 
                 # if h == 2 or h == 19 or l == 20:
-                #     print(f"Edge case hit: h={h}, l={l}, seen_len={seen_len}, unseen_len={unseen_len}")
-                #     import pdb; pdb.set_trace()
+                # print(f"Edge case hit: h={h}, l={l}, seen_len={seen_len}, unseen_len={unseen_len}")
+                # import pdb; pdb.set_trace()
 
             if unseen_len > 0:
                 
@@ -193,8 +193,8 @@ def update_matrix(x_recon, x_gt, inputs_h, L_opt,seen_ade_metric,unseen_ade_metr
                 unseen_count_matrix[h_idx, l_idx] += 1
                 total_unseen_loss += loss_unseen.item()
                 # if h == 2 or h == 19 or l == 20:
-                #     print(f"Edge case hit: h={h}, l={l}, seen_len={seen_len}, unseen_len={unseen_len}")
-                #     import pdb; pdb.set_trace()
+                # print(f"Edge case hit: h={h}, l={l}, seen_len={seen_len}, unseen_len={unseen_len}")
+                # import pdb; pdb.set_trace()
                 # print(f"Unseen loss h={h}, l={l}, start_idx={start_idx}, len={unseen_len}")
                 # print(f"x_gt_unseen shape: {x_gt_unseen.shape}, x_recon_unseen shape: {x_recon_unseen.shape}")
                 
