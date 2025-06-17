@@ -26,9 +26,9 @@ class Traj_Diffusion(nn.Module):
         
 
         self.encoder = HiVT_Encoder(config)
-        # self.decoder = Diffusion_Planner_Decoder(config)
+        self.decoder = Diffusion_Planner_Decoder(config)
         # MLP decoder for X_0 recon
-        self.decoder = MLPReconstructor(local_channels=config.embed_dim,global_channels=config.embed_dim)
+        # self.decoder = MLPReconstructor(local_channels=config.embed_dim,global_channels=config.embed_dim)
         self.pred_decoder = MLPDecoder(local_channels=config.embed_dim,
                                   global_channels=config.embed_dim,
                                   future_steps=config.future_steps,
@@ -118,7 +118,6 @@ class Traj_Diffusion(nn.Module):
             inputs['x_gt'] = decoder_outputs['gt'] 
             decoder_outputs['score'] = torch.where(mask, torch.zeros_like(decoder_outputs['score']), decoder_outputs['score'])  # [B, T, 2] # mask the score by L_opt
             
-            
             #NOTE mask the seen part, for only unseen loss test
             # expand_H_mask = H_mask.unsqueeze(-1)
             # decoder_outputs['gt'] = torch.where(~expand_H_mask, torch.zeros_like(decoder_outputs['gt']), decoder_outputs['gt'])  # mask gt in decoder outputs
@@ -126,8 +125,6 @@ class Traj_Diffusion(nn.Module):
 
             # import pdb; pdb.set_trace()
             
-            
-    
             x0 = torch.where(mask, torch.zeros_like(x0), x0)  # [B, T, 2] # mask the x0 by L_opt
             return x0, decoder_outputs
         

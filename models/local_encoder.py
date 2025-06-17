@@ -86,7 +86,10 @@ class customEncoder(nn.Module):
         mask = data["H_mask"]
         # import pdb; pdb.set_trace()
         # padding_mask=data['padding_mask'][data["agent_index"]
+        
+        #NOTE debug
         input_x = self.temporal_encoder(x=input_x, padding_mask=data["L_mask"], H = H, mask = mask) # (N, 20, D)
+        # input_x = self.temporal_encoder(x=input_x, padding_mask=data['padding_mask'][data['agent_index'], : self.historical_steps], H = H, mask = mask) # (N, 20, D)
         
         return input_x  # [B, D]
 
@@ -159,6 +162,20 @@ class custom_TemporalEncoder(nn.Module):
         out = out.permute(1, 0, 2) #[B,T,D]
         # import pdb; pdb.set_trace()
 ####################################################################################
+
+
+#######################debug version########################################
+        # x = self.center_embed(x)  # [N, T, D]
+        # x = x.permute(1, 0, 2)  # [T, N, D]
+        # x = torch.where(padding_mask.t().unsqueeze(-1), self.padding_token, x)
+        # # expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
+        # # x = torch.cat((x, expand_cls_token), dim=0)
+        
+        # x = x + self.pos_embed
+        # out = self.transformer_encoder(src=x, src_key_padding_mask=None)
+        # out = out.permute(1, 0, 2) #[B,T,D]
+####################################################################################
+
         
         return out  # [N, 20, D]
 

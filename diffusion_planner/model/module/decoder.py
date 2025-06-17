@@ -73,22 +73,23 @@ class Decoder(nn.Module):
         # x_his = sample_agent_history(inputs) # [B, 1, 20, 2]
         x_his = inputs.x_copy[inputs.agent_index, :, :2]  # [B, 20, 2]
         x_his = x_his.unsqueeze(1)  # [B, 1, T, 2]
+        
 
-
-        B = inputs.batch.max().item() + 1
+       
         # NOTE type embedding
         # agent_type = extract_agent_type(batch_vec, inputs.agent_index, B)# [B*N] 0 for av ,  1 for others
         # type_embedding = self.agent_type_embed(agent_type)                 # [B*N, 2*D]
         # encoding = encoder_outputs + type_embedding                        # [B*N, 2*D]
         
         # just use the agent local embedding
-        encoding = encoder_outputs[inputs.agent_index, :] #[N,D ] to [B, D]
+        encoding = encoder_outputs #[N,D ] to [B, D]
 
        
         B, P, T, _ = x_his.shape
 
        
-        xT = torch.cat([ torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, -1, :].unsqueeze(2) ], dim=2).reshape(B, P, -1)
+        xT = torch.cat([ torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, -1, :].unsqueeze(2)], dim=2).reshape(B, P, -1)
+     
 
         def initial_state_constraint(xt, t, step):
             xt = xt.reshape(B, P, -1, 2)
@@ -281,7 +282,7 @@ class DiT(nn.Module):
         self.preproj = Mlp(in_features=output_dim, hidden_features=512, out_features=hidden_dim, act_layer=nn.GELU, drop=0.)
         self.t_embedder = TimestepEmbedder(hidden_dim) # add t_embedding into x_t instead of context
         self.Length_embedder = TimestepEmbedder(hidden_dim)
-        self.blocks = nn.ModuleList([iTBlock(hidden_dim, heads, dropout, mlp_ratio) for i in range(depth)])
+        self.blocks = nn.ModuleList([DiTBlock(hidden_dim, heads, dropout, mlp_ratio) for i in range(depth)])
         self.final_layer = FinalLayer(hidden_dim, output_dim)
         self._sde = sde
         self.marginal_prob_std = self._sde.marginal_prob_std
