@@ -23,7 +23,7 @@ class MLPReconstructor(nn.Module):
             nn.Linear(self.input_dim, self.input_dim),
             nn.LayerNorm(self.input_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(self.input_dim, self.history_steps*2)  # [B, 20*2]
+            nn.Linear(self.input_dim, 2)  # [B, 20*2]
         )
 
         self.Length_embedder = TimestepEmbedder(self.input_dim)
@@ -43,36 +43,33 @@ class MLPReconstructor(nn.Module):
 
         """
 
-        import pdb
-        # pdb.set_trace()
-        # x0 = encoder_outputs[inputs['agent_index'], :] # [B,20,D]
-
-        # # Inject Lopt into encoder_outputs
-        # L_embed = self.Length_embedder(L_opt)  # [B, D]
-        # x0 = x0 + L_embed.unsqueeze(1) 
-
-        # # decode to displacement
-        # x0 = self.mlp(x0)   # [B, 20,2 ]
-        # # x0 = x0.view(-1, self.history_steps, 2)                 # [B, 20, 2]
+#########################encoder_outputs: [B,T, D]#####################
         
-        # #gt = inputs['x'][inputs['agent_index'], :,:2]  # [B, 20, 2]
-        # gt = inputs.x_copy[inputs.agent_index, :, :2]
-        # # keep the last two frame pos and last displacement
-        # x0[:, -1, :] = gt[:, -1, :] # [B, P, 20, 2]
-        
-        
-
-        agent_embed = encoder_outputs
+        x0 = encoder_outputs
         # Inject Lopt into encoder_outputs
         L_embed = self.Length_embedder(L_opt)  # [B, D]
-        agent_embed = agent_embed + L_embed
-        x0 = self.mlp(agent_embed)                                    # [B, T,2]
-        x0 = x0.view(-1, self.history_steps, 2)                 # [B, 20, 2]
-        # x0.unsqueeze_(1)  # [B, 1, 20, 2]
-        gt = inputs.x_copy[inputs.agent_index, :, :2] # [B,  20, 2]
-        
+        x0 = x0 + L_embed.unsqueeze(1) 
+        # decode to displacement
+        x0 = self.mlp(x0)   # [B, 20,2 ]
+        gt = inputs.x_copy[inputs.agent_index, :, :2]
         # keep the last two frame pos and last displacement
         x0[:, -1, :] = gt[:, -1, :] # [B, P, 20, 2]
+#########################################################################
+        
+
+#########################encoder_outputs: [B, D]#####################
+        # agent_embed = encoder_outputs
+        # # Inject Lopt into encoder_outputs
+        # L_embed = self.Length_embedder(L_opt)  # [B, D]
+        # agent_embed = agent_embed + L_embed
+        # x0 = self.mlp(agent_embed)                                    # [B, T,2]
+        # x0 = x0.view(-1, self.history_steps, 2)                 # [B, 20, 2]
+        # gt = inputs.x_copy[inputs.agent_index, :, :2] # [B,  20, 2]
+        # # keep the last two frame pos and last displacement
+        # x0[:, -1, :] = gt[:, -1, :] # [B, P, 20, 2]
+#########################################################################
+
+
         # import pdb; pdb.set_trace()
         return  {
                     "score": x0,

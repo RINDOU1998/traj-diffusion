@@ -81,58 +81,13 @@ class customEncoder(nn.Module):
         )
         
     def forward(self, data: TemporalData) -> torch.Tensor:
-        # for t in range(self.historical_steps):
-        #     data[f'edge_index_{t}'], _ = subgraph(subset=~data['padding_mask'][:, t], edge_index=data.edge_index)
-        #     data[f'edge_attr_{t}'] = \
-        #         data['positions'][data[f'edge_index_{t}'][0], t] - data['positions'][data[f'edge_index_{t}'][1], t]
-        # if self.parallel:
-        #     snapshots = [None] * self.historical_steps
-        #     for t in range(self.historical_steps):
-        #         edge_index, edge_attr = self.drop_edge(data[f'edge_index_{t}'], data[f'edge_attr_{t}'])
-        #         snapshots[t] = Data(x=data.x[:, t], edge_index=edge_index, edge_attr=edge_attr,
-        #                             num_nodes=data.num_nodes)
-        #     batch = Batch.from_data_list(snapshots)
-        #     out = self.aa_encoder(x=batch.x, t=None, edge_index=batch.edge_index, edge_attr=batch.edge_attr,
-        #                           bos_mask=data['bos_mask'], rotate_mat=data['rotate_mat'])
-        #     out = out.view(self.historical_steps, out.shape[0] // self.historical_steps, -1)
-        # else:
-        #     out = [None] * self.historical_steps
-        #     for t in range(self.historical_steps):
-        #         edge_index, edge_attr = self.drop_edge(data[f'edge_index_{t}'], data[f'edge_attr_{t}'])
-        #         out[t] = self.aa_encoder(x=data.x[:, t], t=t, edge_index=edge_index, edge_attr=edge_attr,
-        #                                  bos_mask=data['bos_mask'][:, t], rotate_mat=data['rotate_mat'])
-        #     out = torch.stack(out)  # [T, N, D]
-
         input_x = data.x[data["agent_index"]] # (N, 20, 2) 
-        
-        
-
-        # input_x = self.temporal_enc(input_x)[0] # [N,D] LSTM
-
         H = data["H"]
         mask = data["H_mask"]
-
-        input_x = self.temporal_encoder(x=input_x, padding_mask=data['padding_mask'][data["agent_index"], : self.historical_steps] , H = H, mask = mask) # (N, 20, D)
+        # import pdb; pdb.set_trace()
+        # padding_mask=data['padding_mask'][data["agent_index"]
+        input_x = self.temporal_encoder(x=input_x, padding_mask=data["L_mask"], H = H, mask = mask) # (N, 20, D)
         
-        
-
-        # out = input_x.permute(1, 0, 2) # (N, 20, D)
-
-        # cls_token = out[:,-1,:]
-        # out = out[:, :self.historical_steps, :]
-        
-
-        
-        
-        #out = self.identity(input_x) # (N, 20, 2)
-        # out = self.temporal_encoder(x=input_x, padding_mask=data['padding_mask'][:, : self.historical_steps]) #(809, 128)
-
-        # edge_index, edge_attr = self.drop_edge(data['lane_actor_index'], data['lane_actor_vectors'])
-        # out = self.al_encoder(x=(data['lane_vectors'], out), edge_index=edge_index, edge_attr=edge_attr,
-        #                       is_intersections=data['is_intersections'], turn_directions=data['turn_directions'],
-        #                       traffic_controls=data['traffic_controls'], rotate_mat=data['rotate_mat'])
-        # out = out.permute(1, 0, 2)
-
         return input_x  # [B, D]
 
 class custom_TemporalEncoder(nn.Module):
@@ -164,51 +119,48 @@ class custom_TemporalEncoder(nn.Module):
                 H: torch.Tensor,
                 mask: torch.Tensor,
                 ) -> torch.Tensor:
-        #NOTE padding mask + attn mask + mean pooling version
-        debug_x = x
-        x = self.center_embed(x)  # [N, T, D]
-        x = x.permute(1, 0, 2)  # [T, N, D]
-        s_attn_mask = self.generate_self_attn_mask(H) # [B,T,T]
-        x = x + self.pos_embed
-        # apply mask on padding token
-        out = self.transformer_encoder(src=x,  src_key_padding_mask=mask)
-        out = out.permute(1, 0, 2) #[B,T,D]
-        reverse_mask = (~mask).long() # [B,T,D]
-        masked_sum = (out * reverse_mask.unsqueeze(-1)).sum(dim=1)
-        lengths = H - 1
-        mean_pooled = masked_sum / lengths.unsqueeze(-1)   # [B,D]
+################ padding mask + mean pooling version#####################
+        # debug_x = x
+        # x = self.center_embed(x)  # [N, T, D]
+        # x = x.permute(1, 0, 2)  # [T, N, D]
+        # s_attn_mask = self.generate_self_attn_mask(H) # [B,T,T]
+        # x = x + self.pos_embed
+        # # apply mask on padding token
+        # out = self.transformer_encoder(src=x,  src_key_padding_mask=mask)
+        # out = out.permute(1, 0, 2) #[B,T,D]
+        # reverse_mask = (~mask).long() # [B,T,D]
+        # masked_sum = (out * reverse_mask.unsqueeze(-1)).sum(dim=1)
+        # lengths = H - 1
+        # mean_pooled = masked_sum / lengths.unsqueeze(-1)   # [B,D]
+####################################################################################
 
-        # NOTE padding mask + attn mask + cls token version
-        x = self.center_embed(x)  # [N, T, D]
-        x = x.permute(1, 0, 2)  # [T, N, D]
+############ NOTE padding mask + cls token version######################
+        # x = self.center_embed(x)  # [N, T, D]
+        # x = x.permute(1, 0, 2)  # [T, N, D]
 
-        expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
-        x = torch.cat((x, expand_cls_token), dim=0)
-
-        x = x + self.pos_embed
-        out = self.transformer_encoder(src=x,  src_key_padding_mask=mask)
-        out = out.permute(1, 0, 2) #[B,T,D]
-
-
-
-
-        #NOTE mask the padding token , also need to check padding mask , it is for position instead of displacement
-        # x = torch.where(padding_mask.t().unsqueeze(-1), self.padding_token, x)
-        # ADD CLS token
         # expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
         # x = torch.cat((x, expand_cls_token), dim=0)
+        # expand_mask  = torch.cat((mask, torch.zeros(x.shape[1],1, device=x.device)), dim=1) 
+        # x = x + self.pos_embed
         
-        # expand mask into multi-head
-        # B, T, _ = s_attn_mask.shape
-        # attn_mask_expanded = s_attn_mask.unsqueeze(1).repeat(1, 8, 1, 1)  # [32, 8, T, T]
-        # attn_mask_expanded = attn_mask_expanded.view(B * 8, T, T)      # [256, T, T]
-        # NOTE remove attn mask , the causal mask
-        
-        
+        # out = self.transformer_encoder(src=x,  src_key_padding_mask=expand_mask)
+        # out = out.permute(1, 0, 2) #[B,T,D]
         # import pdb; pdb.set_trace()
-        # out = self.transformer_encoder(src=x, src_key_padding_mask=None)
+####################################################################################
 
-        return mean_pooled  # [N, 20, D]
+###########NOTE mask the padding token , also need to check padding mask , it is for position instead of displacement
+##############padding token + padding mask + position-wise encoder version#####################
+        x = self.center_embed(x)  # [N, T, D]
+        x = x.permute(1, 0, 2)  # [T, N, D]
+        x = torch.where(mask.t().unsqueeze(-1), self.padding_token, x)   
+        x = x + self.pos_embed 
+        # NOTE remove attn mask , the causal mask 
+        out = self.transformer_encoder(src=x, src_key_padding_mask=padding_mask)
+        out = out.permute(1, 0, 2) #[B,T,D]
+        # import pdb; pdb.set_trace()
+####################################################################################
+        
+        return out  # [N, 20, D]
 
     @staticmethod
     def generate_square_subsequent_mask(seq_len: int) -> torch.Tensor:

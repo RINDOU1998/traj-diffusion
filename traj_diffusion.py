@@ -98,6 +98,7 @@ class Traj_Diffusion(nn.Module):
 
             L_opt = inputs["L_opt"]
             mask = generate_displacement_mask(L_opt)
+            inputs["L_mask"] = mask
             H_mask = generate_displacement_mask(inputs_h)
             inputs["H_mask"] = H_mask
 
@@ -119,10 +120,11 @@ class Traj_Diffusion(nn.Module):
             
             
             #NOTE mask the seen part, for only unseen loss test
-            expand_H_mask = H_mask.unsqueeze(-1)
-            decoder_outputs['gt'] = torch.where(~expand_H_mask, torch.zeros_like(decoder_outputs['gt']), decoder_outputs['gt'])  # mask gt in decoder outputs
-            decoder_outputs['score'] = torch.where(~expand_H_mask, torch.zeros_like(decoder_outputs['score']), decoder_outputs['score'])  # [B, T, 2] # mask the score by L_opt
+            # expand_H_mask = H_mask.unsqueeze(-1)
+            # decoder_outputs['gt'] = torch.where(~expand_H_mask, torch.zeros_like(decoder_outputs['gt']), decoder_outputs['gt'])  # mask gt in decoder outputs
+            # decoder_outputs['score'] = torch.where(~expand_H_mask, torch.zeros_like(decoder_outputs['score']), decoder_outputs['score'])  # [B, T, 2] # mask the score by L_opt
 
+            # import pdb; pdb.set_trace()
             
             
     
