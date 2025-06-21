@@ -50,7 +50,7 @@ class MR(Metric):
 
 
 @torch.no_grad()
-def validation_epoch(model, val_loader, device,show = False ):
+def validation_epoch(model, val_loader, device,show = True ):
     model.eval()
     
     seen_ade_metric = ADE().to(device)
@@ -77,11 +77,11 @@ def validation_epoch(model, val_loader, device,show = False ):
 
 
         # visualization
-        save_base_dir = "/root/traj-diffusion/visualization/recon_debug/MLP"
+        save_base_dir = "/root/traj-diffusion/visualization/recon_debug/diffusion_fixed"
         if show:
             scene_list = batch_output_to_np_list(
                 batch, batch, x_recon, y_hat = None, 
-                val_data_folder='/root/dataset/val/data',only_recon = True
+                val_data_folder='/root/dataset/combined/val/data',only_recon = True
             )
             for scene_idx, scene in enumerate(scene_list):
                 save_path = os.path.join(save_base_dir, f"batch_{batch_idx+1}", f"scene_{scene_idx}.png")
@@ -109,6 +109,28 @@ def validation_epoch(model, val_loader, device,show = False ):
 
     loss_matrix[count_matrix > 0] /= count_matrix[count_matrix > 0]
     seen_loss_matrix[seen_count_matrix > 0] /= seen_count_matrix[seen_count_matrix > 0]
+
+    unseen_loss_per_hidx = []
+    for h_idx in range(19):
+        # Get unseen losses and counts across l_idx for the current h_idx
+        losses = unseen_loss_matrix[h_idx]
+        counts = unseen_count_matrix[h_idx]
+
+        # Avoid division by zero
+        valid = counts > 0
+        
+        if valid.any():
+            avg_loss = (losses[valid] / counts[valid]).mean().item()
+        else:
+            avg_loss = float('nan')  # or 0.0 if you prefer
+        import pdb; pdb.set_trace()
+        unseen_loss_per_hidx.append(avg_loss)
+    
+    print("📊 Unseen Loss per H_idx (h = 2~20):")
+    for i, val in enumerate(unseen_loss_per_hidx):
+        print(f"h={i+2}: {val:.4f}")
+
+
     unseen_loss_matrix[unseen_count_matrix > 0] /= unseen_count_matrix[unseen_count_matrix > 0]
 
 
@@ -116,6 +138,11 @@ def validation_epoch(model, val_loader, device,show = False ):
     unseen_ade = unseen_ade_metric.compute().item()
     print(f"\n✅ Final Recon Loss: {avg_total_recon_loss:.4f}, Seen: {avg_total_seen_loss:.4f}, Unseen: {avg_total_unseen_loss:.4f}")
     print(f"seen ade: {seen_ade}, unseen ade: {unseen_ade}")
+
+    # TODO: calculate the unseen loss in each h_idx   matrix -> list of average losses in each h_idx
+    
+
+
     return {
         "loss_matrix": loss_matrix,
         "count_matrix": count_matrix,

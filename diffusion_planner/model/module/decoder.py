@@ -73,9 +73,7 @@ class Decoder(nn.Module):
         # x_his = sample_agent_history(inputs) # [B, 1, 20, 2]
         x_his = inputs.x_copy[inputs.agent_index, :, :2]  # [B, 20, 2]
         x_his = x_his.unsqueeze(1)  # [B, 1, T, 2]
-        
 
-       
         # NOTE type embedding
         # agent_type = extract_agent_type(batch_vec, inputs.agent_index, B)# [B*N] 0 for av ,  1 for others
         # type_embedding = self.agent_type_embed(agent_type)                 # [B*N, 2*D]
@@ -83,11 +81,9 @@ class Decoder(nn.Module):
         
         # just use the agent local embedding
         encoding = encoder_outputs #[N,D ] to [B, D]
-
-       
+        padding_mask = inputs["L_mask"]
         B, P, T, _ = x_his.shape
-
-       
+      
         xT = torch.cat([ torch.randn(B, P, 19, 2).to(x_his.device) * 0.5,x_his[:, :, -1, :].unsqueeze(2)], dim=2).reshape(B, P, -1)
      
 
@@ -95,35 +91,27 @@ class Decoder(nn.Module):
             xt = xt.reshape(B, P, -1, 2)
             return xt.reshape(B, P, -1)
         
-      
-        # TODO: modify sampler 
-         
-        # x, t, cross_c, batch_vec
+        # import pdb; pdb.set_trace()
         t = torch.rand(B, device=x_his.device) * (1 - eps) + eps
         diffusion_time = t
         x0 = dpm_sampler(
                     self.dit,
                     xT,
                     other_model_params={
-                
                         "cross_c": encoding, 
                         "batch_vec": batch_vec,   
-                        "L_opt": L_opt,                             
+                        "L_opt": L_opt, 
+                        "padding_mask" : padding_mask                          
                     },
                     dpm_solver_params={
                         "correcting_xt_fn":initial_state_constraint,
                     }
             )
-        
-       
+
         x0 = x0.reshape(B, P, -1, 2) 
         #keep the last frame displacement
         x0[:, :, -1, :] = x_his[:, :, -1, :] # [B, P, 20, 2]
-
-
-        
-
-        
+ 
         #NOTE： remove state normalizer 
         # x0 = self._state_normalizer.inverse(x0.reshape(B, P, -1, 2))
 
@@ -131,6 +119,7 @@ class Decoder(nn.Module):
             z = torch.randn_like(x_his, device=x_his.device)
             mean, std = self._sde.marginal_prob(x_his, t)
             sampled_trajectories = mean + std * z
+            # import pdb; pdb.set_trace()
             sampled_trajectories = sampled_trajectories.reshape(B, P, -1) # [B, 1,40]
             
             return {
@@ -139,7 +128,8 @@ class Decoder(nn.Module):
                         diffusion_time,
                         encoding,
                         batch_vec,
-                        L_opt
+                        L_opt,
+                        padding_mask
                     ).reshape(B, -1, 2), #[B,1,20,2]
                     "std" : std,
                     "z" : z,
@@ -154,31 +144,6 @@ class Decoder(nn.Module):
                     "std" : None,
                     "z" : None,
                 }
-
-        
-
-        
-
-
-
-        # av trajectory Training : [B, 1, (1 + V_future) * 4]
-
-        # Extract ego & neighbor current states
-        #ego_current = inputs['ego_current_state'][:, None, :4]  # [B, 1, 4]
-        
-        
-        #neighbors_current = inputs["neighbor_agents_past"][:, :self._predicted_neighbor_num, -1, :4] # [B, P, 4]
-        # mask for current neighbors which are not in the scene
-        #neighbor_current_mask = torch.sum(torch.ne(neighbors_current[..., :4], 0), dim=-1) == 0 # [B, P]
-
-        #current_states = torch.cat([ego_current, neighbors_current], dim=1) # [B, P, 4]
-
-        #B, P, _ = current_states.shape
-        #assert P == (1 + self._predicted_neighbor_num)
-
-
-        
-        
 
         # Extract context encoding
         # ego_neighbor_encoding = encoder_outputs['encoding']
@@ -224,53 +189,6 @@ class Decoder(nn.Module):
         #             "prediction": x0
         #         }
 
-        
-class RouteEncoder(nn.Module):
-    def __init__(self, route_num, lane_len, drop_path_rate=0.3, hidden_dim=192, tokens_mlp_dim=32, channels_mlp_dim=64):
-        super().__init__()
-
-        self._channel = channels_mlp_dim
-
-        self.channel_pre_project = Mlp(in_features=4, hidden_features=channels_mlp_dim, out_features=channels_mlp_dim, act_layer=nn.GELU, drop=0.)
-        self.token_pre_project = Mlp(in_features=route_num * lane_len, hidden_features=tokens_mlp_dim, out_features=tokens_mlp_dim, act_layer=nn.GELU, drop=0.)
-
-        self.Mixer = MixerBlock(tokens_mlp_dim, channels_mlp_dim, drop_path_rate)
-
-        self.norm = nn.LayerNorm(channels_mlp_dim)
-        self.emb_project = Mlp(in_features=channels_mlp_dim, hidden_features=hidden_dim, out_features=hidden_dim, act_layer=nn.GELU, drop=drop_path_rate)
-
-    def forward(self, x):
-        '''
-        x: B, P, V, D
-        '''
-        # only x and x->x' vector, no boundary, no speed limit, no traffic light
-        x = x[..., :4]
-
-        B, P, V, _ = x.shape
-        mask_v = torch.sum(torch.ne(x[..., :4], 0), dim=-1).to(x.device) == 0
-        mask_p = torch.sum(~mask_v, dim=-1) == 0
-        mask_b = torch.sum(~mask_p, dim=-1) == 0
-        x = x.view(B, P * V, -1)
-
-        valid_indices = ~mask_b.view(-1) 
-        x = x[valid_indices] 
-
-        x = self.channel_pre_project(x)
-        x = x.permute(0, 2, 1)
-        x = self.token_pre_project(x)
-        x = x.permute(0, 2, 1)
-        x = self.Mixer(x)
-
-        x = torch.mean(x, dim=1)
-
-        x = self.emb_project(self.norm(x))
-
-        x_result = torch.zeros((B, x.shape[-1]), device=x.device)
-        x_result[valid_indices] = x  # Fill in valid parts
-        
-        return x_result.view(B, -1)
-
-# NOTE remove route_encoder
 class DiT(nn.Module):
     def __init__(self, sde: SDE,  depth, output_dim, hidden_dim=256, heads=6, dropout=0.1, mlp_ratio=4.0, model_type="x_start"):
         super().__init__()
@@ -292,14 +210,8 @@ class DiT(nn.Module):
     @property
     def model_type(self):
         return self._model_type
-
-
-    #  sampled_trajectories, 
-    # diffusion_time,
-    # encoding,
-    # batch_vec
-        
-    def forward(self, x, t, cross_c, batch_vec, L_opt):
+     
+    def forward(self, x, t, cross_c, batch_vec, L_opt,padding_mask):
         """
         Forward pass of DiT.
         x: (B, P, output_dim 2* 20)   -> Embedded out of DiT
@@ -307,43 +219,31 @@ class DiT(nn.Module):
         cross_c: (B, T, D)      -> conditioning context, agent local info
         """
         B, T, D = cross_c.shape
-        x = x.reshape(B, -1, 2)  # [B, T, 2]
-        x = self.preproj(x) # [B,20,D]
-       
-        # NOTE add t_embedder
-
+        debug_x = x.reshape(B, -1, 2)  # [B, T, 2]
+        x = self.preproj(debug_x) # [B,20,D]
+        #add t_embedder
         t_embed = self.t_embedder(t)           # [B, D]
-        
-         # Inject time info into condition
+        # Inject time info into condition
         cross_c = cross_c + t_embed.unsqueeze(1)    # [B, T, D]
         # Inject L_opt into condition
         L_embed = self.Length_embedder(L_opt)
         cross_c = cross_c + L_embed.unsqueeze(1)
-        
-
-        cross_c = cross_c + self.pos_embed[:, :T, :]  # [B, T, D] add positional embedding
+        # cross_c = cross_c + self.pos_embed[:, :T, :]  # [B, T, D] add positional embedding
+        # import pdb; pdb.set_trace()
         # add av and route 
         # x_embedding = torch.cat([self.agent_embedding.weight[0][None, :], self.agent_embedding.weight[1][None, :].expand(P - 1, -1)], dim=0)  # (P, D)
         # x_embedding = x_embedding[None, :, :].expand(B, -1, -1) # (B, P, D)
-        # x = x + x_embedding     
-        
+        # x = x + x_embedding           
         # add embedding to context for 
-
         # route_encoding = self.route_encoder(route_lanes)
         # y = route_encoding
         # y = y + self.t_embedder(t)      
-
         # attn_mask = torch.zeros((B, P), dtype=torch.bool, device=x.device)
         # attn_mask[:, 1:] = neighbor_current_mask
-
-
-
         batch_vec = batch_vec
-
         for block in self.blocks:
-            x = block(x, cross_c,t_embed,batch_vec)   #[B,T,D]
+            x = block(x, cross_c,t_embed,batch_vec,padding_mask)   #[B,T,D]
             
-        
         x = self.final_layer(x) #[B,T,2]
         x = x.reshape(B, 1, -1)
         
@@ -353,3 +253,46 @@ class DiT(nn.Module):
             return x
         else:
             raise ValueError(f"Unknown model type: {self._model_type}")
+
+
+
+
+class RouteEncoder(nn.Module):
+    def __init__(self, route_num, lane_len, drop_path_rate=0.3, hidden_dim=192, tokens_mlp_dim=32, channels_mlp_dim=64):
+        super().__init__()
+
+        self._channel = channels_mlp_dim
+
+        self.channel_pre_project = Mlp(in_features=4, hidden_features=channels_mlp_dim, out_features=channels_mlp_dim, act_layer=nn.GELU, drop=0.)
+        self.token_pre_project = Mlp(in_features=route_num * lane_len, hidden_features=tokens_mlp_dim, out_features=tokens_mlp_dim, act_layer=nn.GELU, drop=0.)
+
+        self.Mixer = MixerBlock(tokens_mlp_dim, channels_mlp_dim, drop_path_rate)
+
+        self.norm = nn.LayerNorm(channels_mlp_dim)
+        self.emb_project = Mlp(in_features=channels_mlp_dim, hidden_features=hidden_dim, out_features=hidden_dim, act_layer=nn.GELU, drop=drop_path_rate)
+
+    def forward(self, x):
+        '''
+        x: B, P, V, D
+        '''
+        # only x and x->x' vector, no boundary, no speed limit, no traffic light
+        x = x[..., :4]
+        B, P, V, _ = x.shape
+        mask_v = torch.sum(torch.ne(x[..., :4], 0), dim=-1).to(x.device) == 0
+        mask_p = torch.sum(~mask_v, dim=-1) == 0
+        mask_b = torch.sum(~mask_p, dim=-1) == 0
+        x = x.view(B, P * V, -1)
+        valid_indices = ~mask_b.view(-1) 
+        x = x[valid_indices] 
+        x = self.channel_pre_project(x)
+        x = x.permute(0, 2, 1)
+        x = self.token_pre_project(x)
+        x = x.permute(0, 2, 1)
+        x = self.Mixer(x)
+        x = torch.mean(x, dim=1)
+        x = self.emb_project(self.norm(x))
+        x_result = torch.zeros((B, x.shape[-1]), device=x.device)
+        x_result[valid_indices] = x  # Fill in valid parts
+        
+        return x_result.view(B, -1)
+

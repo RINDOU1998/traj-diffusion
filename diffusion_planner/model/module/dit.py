@@ -96,7 +96,7 @@ class DiTBlock(nn.Module):
         self.mlp2 = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
         self.attn_mask = self.generate_square_subsequent_mask(20)
 
-    def forward(self, x, cross_c, t_embed, batch_vec):
+    def forward(self, x, cross_c, t_embed, batch_vec,padding_mask):
         
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cross_c).chunk(6, dim=2) # [B,T,D] token-wise modulation
         # adaln self attn
@@ -108,7 +108,7 @@ class DiTBlock(nn.Module):
 
         # also fix th
 
-        x = x + gate_msa * self.attn(modulated_x, modulated_x, modulated_x)[0]
+        x = x + gate_msa * self.attn(modulated_x, modulated_x, modulated_x, key_padding_mask = padding_mask)[0]
         
         modulated_x = modulate(self.norm2(x), shift_mlp, scale_mlp)
         x = x + gate_mlp * self.mlp1(modulated_x)
