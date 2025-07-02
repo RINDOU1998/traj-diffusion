@@ -50,7 +50,7 @@ class MR(Metric):
 
 
 @torch.no_grad()
-def validation_epoch(model, val_loader, device,show = True ):
+def validation_epoch(model, val_loader, device,show = False ):
     model.eval()
     
     seen_ade_metric = ADE().to(device)
@@ -123,7 +123,7 @@ def validation_epoch(model, val_loader, device,show = True ):
             avg_loss = (losses[valid] / counts[valid]).mean().item()
         else:
             avg_loss = float('nan')  # or 0.0 if you prefer
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         unseen_loss_per_hidx.append(avg_loss)
     
     print("📊 Unseen Loss per H_idx (h = 2~20):")

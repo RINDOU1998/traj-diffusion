@@ -3,7 +3,7 @@ from tqdm import tqdm
 from torchmetrics import Metric
 from validation.visual import batch_output_to_np_list, viz_predictions
 import os
-
+import torch.nn.functional as F
 class ADE(Metric):
     def __init__(self):
         super().__init__()
@@ -49,12 +49,15 @@ class MR(Metric):
 
 
 @torch.no_grad()
-def validation_epoch(model, val_loader, device, show=False):
+def validation_epoch(model, val_loader, device,current_epoch = 1,show=False):
     model.eval()
 
     ade_metric = ADE().to(device)
     fde_metric = FDE().to(device)
     mr_metric = MR().to(device)
+
+    seen_ade_metric = ADE().to(device)
+    unseen_ade_metric = ADE().to(device)
 
     total_loss = 0.0
     total_batches = 0
@@ -73,7 +76,7 @@ def validation_epoch(model, val_loader, device, show=False):
 
     for batch_idx, batch in enumerate(tqdm(val_loader, desc="Validation", unit="batch")):
         batch = batch.to(device)
-        _, diffusion_output, y_hat, pi, batch_inputs = model(batch)
+        _, diffusion_output, y_hat, pi, batch_inputs,L_opt_logits = model(batch,current_epoch)
 
         # visualization
         if show:
@@ -100,7 +103,9 @@ def validation_epoch(model, val_loader, device, show=False):
             if 2 <= h <= 20 and 2 <= l <= 20:
                 valid_len = l - 1
                 if valid_len <= 0:
+                    print(f"warning: invalid length")
                     continue
+                
                 loss = ((x_recon[i, -valid_len:, :] - x_gt[i, -valid_len:, :]) ** 2).mean()
                 loss_matrix[h - 2, l - 2] += loss
                 count_matrix[h - 2, l - 2] += 1
@@ -121,6 +126,9 @@ def validation_epoch(model, val_loader, device, show=False):
                     x_gt_seen = x_gt[i, T - seen_len:T, :]
                     x_recon_seen = x_recon[i, T - seen_len:T, :]
                     loss_seen = ((x_recon_seen - x_gt_seen) ** 2).mean()
+                    # seen ade 
+                    seen_ade_metric.update(x_recon_seen,x_gt_seen)
+
                     seen_loss_matrix[h_idx, l_idx] += loss_seen
                     seen_count_matrix[h_idx, l_idx] += 1
                     total_seen_loss += loss_seen.item()
@@ -129,6 +137,9 @@ def validation_epoch(model, val_loader, device, show=False):
                     x_gt_unseen = x_gt[i, start_idx:start_idx + unseen_len, :]
                     x_recon_unseen = x_recon[i, start_idx:start_idx + unseen_len, :]
                     loss_unseen = ((x_recon_unseen - x_gt_unseen) ** 2).mean()
+                    # unseen ade
+                    unseen_ade_metric.update(x_recon_unseen,x_gt_unseen)
+
                     unseen_loss_matrix[h_idx, l_idx] += loss_unseen
                     unseen_count_matrix[h_idx, l_idx] += 1
                     total_unseen_loss += loss_unseen.item()
@@ -174,8 +185,14 @@ def validation_epoch(model, val_loader, device, show=False):
     ade = ade_metric.compute().item()
     fde = fde_metric.compute().item()
     mr = mr_metric.compute().item()
+    seen_ade = seen_ade_metric.compute().item()
+    unseen_ade = unseen_ade_metric.compute().item()
 
     print(f"✅ Validation - Loss: {avg_loss:.4f}, ADE: {ade:.4f}, FDE: {fde:.4f}, MR: {mr:.4f}, "
-          f"Recon: {total_recon_loss:.4f}, Seen: {avg_total_seen_loss:.4f}, Unseen: {avg_total_unseen_loss:.4f}")
+          f"Recon: {total_recon_loss:.4f}, Seen: {avg_total_seen_loss:.4f}, Unseen: {avg_total_unseen_loss:.4f} ,"
+          f"Seen ADE: {seen_ade:.4f}, Unseen ADE: {unseen_ade:.4f}")
 
+    prob = F.softmax(L_opt_logits, dim=-1)  # Get probabilities
+    entropy = -torch.sum(prob * torch.log(prob + 1e-8), dim=-1).mean()
+    print(f"debug: logit entropy {entropy:.4f} ")
     return ade, fde, mr, avg_loss, total_recon_loss, avg_total_seen_loss, avg_total_unseen_loss, recon_loss_matrix

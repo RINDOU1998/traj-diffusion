@@ -32,66 +32,91 @@ from diffusion_planner.utils.utils import TemporalData
 from diffusion_planner.utils.utils import init_weights
 
 
-class customEncoder(nn.Module):
+class Length_selector_Encoder(nn.Module):
 
     def __init__(self,
                  historical_steps: int,
-                 node_dim: int,
-                 edge_dim: int,
                  embed_dim: int,
                  num_heads: int = 8,
                  dropout: float = 0.1,
                  num_temporal_layers: int = 4,
                  local_radius: float = 50,
                  parallel: bool = False) -> None:
-        super(customEncoder, self).__init__()
+        super(Length_selector_Encoder, self).__init__()
         self.historical_steps = historical_steps
-        self.parallel = parallel
-        self.node_dim = node_dim
         self.embed_dim = embed_dim
-        self.drop_edge = DistanceDropEdge(local_radius)
-        self.aa_encoder = AAEncoder(historical_steps=historical_steps,
-                                    node_dim=node_dim,
-                                    edge_dim=edge_dim,
-                                    embed_dim=embed_dim,
-                                    num_heads=num_heads,
-                                    dropout=dropout,
-                                    parallel=parallel)
         self.temporal_encoder = custom_TemporalEncoder(historical_steps=historical_steps,
                                                 embed_dim=embed_dim,
                                                 num_heads=num_heads,
                                                 dropout=dropout,
                                                 num_layers=4)
-        
-        self.temporal_enc = nn.LSTM(input_size=node_dim,
-                                   hidden_size=embed_dim,
-                                   num_layers=1,
-                                   batch_first=True,
-                                   dropout=dropout
-                                   )
-        
-        self.identity = nn.Sequential(
-            nn.Linear(self.embed_dim, self.embed_dim),
-            nn.LayerNorm(self.embed_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.embed_dim, self.embed_dim),
-            nn.LayerNorm(self.embed_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.embed_dim,  self.node_dim)  # [B, 20*2]
-        )
-        
+        self.initialize_weights()
+
+    #initialize weights of the model
+    def initialize_weights(self):
+        # Initialize transformer layers:
+        def _basic_init(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight)
+                if isinstance(m, nn.Linear) and m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.LayerNorm):
+                nn.init.constant_(m.bias, 0)
+                nn.init.constant_(m.weight, 1.0)
+            elif isinstance(m, nn.Embedding):
+                nn.init.normal_(m.weight, mean=0.0, std=0.02)
+        self.apply(_basic_init)
+
     def forward(self, data: TemporalData) -> torch.Tensor:
         input_x = data.x[data["agent_index"]] # (N, 20, 2) 
-        H = data["H"]
-        mask = data["H_mask"]
-        # import pdb; pdb.set_trace()
-        # padding_mask=data['padding_mask'][data["agent_index"]
-        
-        #NOTE debug
-        input_x = self.temporal_encoder(x=input_x, padding_mask=data["L_mask"], H = H, mask = mask) # (N, 20, D)
-        # input_x = self.temporal_encoder(x=input_x, padding_mask=data['padding_mask'][data['agent_index'], : self.historical_steps], H = H, mask = mask) # (N, 20, D)
-        
-        return input_x  # [B, D]
+        out, cls_token = self.temporal_encoder(x = input_x, 
+                                        padding_token_mask = data["H_mask"], 
+                                        attn_padding_mask = data["H_mask"]) # (N, 20, D)
+     
+        return out, cls_token # [B,T,D] , [B,D]
+
+class Condition_Encoder(nn.Module):
+
+    def __init__(self,
+                 historical_steps: int,
+                 embed_dim: int,
+                 num_heads: int = 8,
+                 dropout: float = 0.1,
+                 num_temporal_layers: int = 4,
+                 local_radius: float = 50,
+                 parallel: bool = False) -> None:
+        super(Condition_Encoder, self).__init__()
+        self.historical_steps = historical_steps
+        self.embed_dim = embed_dim
+        self.temporal_encoder = custom_TemporalEncoder(historical_steps=historical_steps,
+                                                embed_dim=embed_dim,
+                                                num_heads=num_heads,
+                                                dropout=dropout,
+                                                num_layers=4)
+        self.initialize_weights()
+
+    #initialize weights of the model
+    def initialize_weights(self):
+        # Initialize transformer layers:
+        def _basic_init(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight)
+                if isinstance(m, nn.Linear) and m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.LayerNorm):
+                nn.init.constant_(m.bias, 0)
+                nn.init.constant_(m.weight, 1.0)
+            elif isinstance(m, nn.Embedding):
+                nn.init.normal_(m.weight, mean=0.0, std=0.02)
+        self.apply(_basic_init)
+
+    def forward(self, data: TemporalData) -> torch.Tensor:
+        input_x = data.x[data["agent_index"]] # (N, 20, 2) 
+        out, cls_token = self.temporal_encoder(x = input_x, 
+                                        padding_token_mask = data["H_mask"], 
+                                        attn_padding_mask = data["L_mask"]) # (N, 20, D)
+     
+        return out, cls_token # [B,T,D] , [B,D]
 
 class custom_TemporalEncoder(nn.Module):
 
@@ -107,7 +132,7 @@ class custom_TemporalEncoder(nn.Module):
                                                          norm=nn.LayerNorm(embed_dim))
         self.padding_token = nn.Parameter(torch.Tensor(historical_steps, 1, embed_dim))
         self.cls_token = nn.Parameter(torch.Tensor(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(torch.Tensor(historical_steps, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.Tensor(historical_steps + 1, 1, embed_dim))
         self.center_embed = SingleInputEmbedding(in_channel=2, out_channel=embed_dim)
         attn_mask = self.generate_square_subsequent_mask(historical_steps + 1)
         self.register_buffer('attn_mask', attn_mask)
@@ -118,10 +143,17 @@ class custom_TemporalEncoder(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                padding_mask: torch.Tensor,
-                H: torch.Tensor,
-                mask: torch.Tensor,
+                padding_token_mask: torch.Tensor,
+                attn_padding_mask: torch.Tensor,
                 ) -> torch.Tensor:
+        
+        """
+        x : [N, T, D] , N is the batch size, T is the historical steps, D is the embedding dimension
+        padding_token_mask: [B, T] , padding the token except H positions
+        attn_padding_mask: [B, T] , padding the token except positions attending self attn.
+        num of available position = H, when encode trajectory for L_opt selector
+        num of available position = L_opt, when encode reconstruction condition 
+        """
 ################ padding mask + mean pooling version#####################
         # debug_x = x
         # x = self.center_embed(x)  # [N, T, D]
@@ -138,28 +170,31 @@ class custom_TemporalEncoder(nn.Module):
 ####################################################################################
 
 ############ NOTE padding mask + cls token version######################
-        # x = self.center_embed(x)  # [N, T, D]
-        # x = x.permute(1, 0, 2)  # [T, N, D]
-
-        # expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
-        # x = torch.cat((x, expand_cls_token), dim=0)
-        # expand_mask  = torch.cat((mask, torch.zeros(x.shape[1],1, device=x.device)), dim=1) 
-        # x = x + self.pos_embed
-        
-        # out = self.transformer_encoder(src=x,  src_key_padding_mask=expand_mask)
-        # out = out.permute(1, 0, 2) #[B,T,D]
+        x = self.center_embed(x)  # [N, T, D]
+        x = x.permute(1, 0, 2)  # [T, N, D]
+        x = torch.where(padding_token_mask.t().unsqueeze(-1), self.padding_token, x) 
+        # add cls token 
+        expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
+        x = torch.cat((x, expand_cls_token), dim=0)
+        expand_mask  = torch.cat((attn_padding_mask, torch.zeros(x.shape[1],1, device=x.device)), dim=1) 
+        x = x + self.pos_embed
+        out = self.transformer_encoder(src=x,  src_key_padding_mask=expand_mask)
+        out = out.permute(1, 0, 2) #[B,T,D]
         # import pdb; pdb.set_trace()
+        # type embedding H or L_opt- H 
+        # type_embedding = torch.where(padding_token_mask.t().unsqueeze(-1), self.agent_embedding.weight[0], self.agent_embedding.weight[1]) 
+        # expand_type_embedding = torch.cat((x, self.agent_embedding.weight[0]), dim=0)
 ####################################################################################
 
 ###########NOTE mask the padding token , also need to check padding mask , it is for position instead of displacement
 ##############padding token + padding mask + position-wise encoder version#####################
-        x = self.center_embed(x)  # [N, T, D]
-        x = x.permute(1, 0, 2)  # [T, N, D]
-        x = torch.where(mask.t().unsqueeze(-1), self.padding_token, x)   
-        x = x + self.pos_embed 
-        # NOTE remove attn mask , the causal mask 
-        out = self.transformer_encoder(src=x, src_key_padding_mask=padding_mask)
-        out = out.permute(1, 0, 2) #[B,T,D]
+        # x = self.center_embed(x)  # [N, T, D]
+        # x = x.permute(1, 0, 2)  # [T, N, D]
+        # x = torch.where(padding_token_mask.t().unsqueeze(-1), self.padding_token, x)   
+        # x = x + self.pos_embed 
+        # # NOTE remove attn mask , the causal mask 
+        # out = self.transformer_encoder(src=x, src_key_padding_mask=attn_padding_mask)
+        # out = out.permute(1, 0, 2) #[B,T,D]
         # import pdb; pdb.set_trace()
 ####################################################################################
 
@@ -175,9 +210,7 @@ class custom_TemporalEncoder(nn.Module):
         # out = self.transformer_encoder(src=x, src_key_padding_mask=None)
         # out = out.permute(1, 0, 2) #[B,T,D]
 ####################################################################################
-
-        
-        return out  # [N, 20, D]
+        return out[:,:20,:], out[:,-1,:]  # [N, 20, D]
 
     @staticmethod
     def generate_square_subsequent_mask(seq_len: int) -> torch.Tensor:
@@ -459,7 +492,10 @@ class TemporalEncoder(nn.Module):
         expand_cls_token = self.cls_token.expand(-1, x.shape[1], -1)
         x = torch.cat((x, expand_cls_token), dim=0)
         x = x + self.pos_embed
+        # TODO: also need to update HiVT padding mask, check padding mask here ,the mask should in Lopt shape
         out = self.transformer_encoder(src=x, mask=self.attn_mask, src_key_padding_mask=None)
+        
+        # import pdb; pdb.set_trace()
         return out[-1]  # [N, D]
 
     @staticmethod

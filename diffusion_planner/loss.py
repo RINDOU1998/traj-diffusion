@@ -4,6 +4,7 @@ import torch.nn as nn
 from diffusion_planner.utils.utils import TemporalData
 from diffusion_planner.utils.normalizer import StateNormalizer
 import torch.nn.functional as F
+import math
 
 """
 Training phase
@@ -33,10 +34,12 @@ def diffusion_loss_func(
     model: nn.Module,
     inputs: TemporalData,
     #futures: Tuple[torch.Tensor, torch.Tensor],
+    current_epoch: int,
     norm: StateNormalizer,
     loss: Dict[str, Any],
     model_type: str,
     eps: float = 1e-3,
+    
 ):   
     
     #NOTE prepare sampled trajectories and diffusion time, now move to decoder part  
@@ -74,13 +77,13 @@ def diffusion_loss_func(
     decoder_output = {}
     
     if model.stage == "recon":
-        x0, decoder_output = model(inputs)
+        x0, decoder_output = model(inputs,current_epoch)
     
     if model.stage == "pred":
-        y_hat, pi = model(inputs)
+        y_hat, pi = model(inputs,current_epoch)
 
     if model.stage == "joint":  
-        _, decoder_output ,y_hat, pi,_= model(inputs) # [B, 1 ,T, 2]
+        _, decoder_output ,y_hat, pi,_, L_opt_logits= model(inputs,current_epoch) # [B, 1 ,T, 2]
 
     # TODO: add reconstruction for global  trajectories
 
@@ -121,5 +124,11 @@ def diffusion_loss_func(
         loss['classification_loss'] = cls_loss
     # prediction loss
     
+    if model.stage == "joint":
+        prob = F.softmax(L_opt_logits, dim=-1)  # Get probabilities
+        entropy = -torch.sum(prob * torch.log(prob + 1e-8), dim=-1).mean()
+        loss['entropy'] = entropy
 
     return loss, decoder_output
+
+

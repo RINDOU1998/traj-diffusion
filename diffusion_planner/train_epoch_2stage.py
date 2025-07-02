@@ -5,8 +5,9 @@ from torch import nn
 from diffusion_planner.utils.train_utils import get_epoch_mean_loss
 from diffusion_planner.utils import ddp
 from diffusion_planner.loss import diffusion_loss_func
+import math
 
-def train_epoch(data_loader, model, optimizer, args, aug=None):
+def train_epoch(data_loader, model, optimizer, args,current_epoch, aug=None):
     model.train()
     if args.ddp:
         torch.cuda.synchronize()
@@ -20,7 +21,7 @@ def train_epoch(data_loader, model, optimizer, args, aug=None):
         # returns a dict with keys:
         #   reconstruction_loss, regression_loss, classification_loss
         losses, _ = diffusion_loss_func(
-            model, batch, args.state_normalizer, {}, args.diffusion_model_type
+            model, batch,current_epoch, args.state_normalizer, {}, args.diffusion_model_type
         )
 
         # pick the combination
@@ -31,7 +32,10 @@ def train_epoch(data_loader, model, optimizer, args, aug=None):
         else:  # joint
             total = (losses["reconstruction_loss"]
                      + losses["regression_loss"]
-                     + losses["classification_loss"])
+                     + losses["classification_loss"]
+                     + losses['entropy']* cosine_decay_lambda(current_epoch)
+                     )
+            
 
         losses["loss"] = total
         total.backward()
@@ -50,3 +54,10 @@ def train_epoch(data_loader, model, optimizer, args, aug=None):
     if ddp.get_rank() == 0:
         print(f"→ epoch mean loss: {epoch_mean['loss']:.4f}")
     return epoch_mean, epoch_mean["loss"]
+
+
+def cosine_decay_lambda(epoch, total_epochs = 64, initial_lambda=0.1, final_lambda=0.0):
+    """Decay lambda from initial_lambda to final_lambda using cosine annealing."""
+    progress = min(epoch / total_epochs, 1.0)
+    decay = 0.5 * (1 + math.cos(math.pi * progress))
+    return final_lambda + (initial_lambda - final_lambda) * decay

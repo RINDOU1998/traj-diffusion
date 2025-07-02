@@ -50,10 +50,10 @@ def random_mask_agent_history(inputs, min_keep=2, history_steps=20):
     B = agent_indices.shape[0]
 
     # 1. Randomly generate number of history steps to keep for each agent
-    # H = torch.randint(low=min_keep, high=history_steps + 1, size=(B,), device=x.device)  # [B]
+    H = torch.randint(low=min_keep, high=history_steps + 1, size=(B,), device=x.device)  # [B]
     
     
-    H, L_opt = generate_h_lopt_pairs(B,device=x.device)
+    # H, L_opt = generate_h_lopt_pairs(B,device=x.device)
     # H = torch.full((B,), 20,device=x.device)  # Creates a tensor of shape [B] filled with 20
     # L_opt = torch.full((B,), 20,device=x.device)
 
@@ -85,7 +85,7 @@ def random_mask_agent_history(inputs, min_keep=2, history_steps=20):
     inputs['bos_mask'] = new_bos_mask
     # Add the length after mask H into inputs
     inputs['H'] = H
-    inputs["L_opt"] = L_opt
+    # inputs["L_opt"] = L_opt
     
 
     return inputs
@@ -110,7 +110,8 @@ def recalculate_masks(inputs, Lopt, history_steps=20):
 
     # [B, history_steps]
     t = torch.arange(history_steps, device=Lopt.device).unsqueeze(0).expand(B, -1)
-    keep_start = (history_steps - Lopt).unsqueeze(1)
+    # NOTE: Lopt 
+    keep_start = (history_steps - Lopt + 1).unsqueeze(1)
 
     new_padding_mask = t < keep_start  # True = mask
 

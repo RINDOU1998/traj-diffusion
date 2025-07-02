@@ -8,14 +8,14 @@ from diffusion_planner.random_mask import generate_displacement_mask, random_mas
 from diffusion_planner.model.module.gating import gating, LoptDecoder
 from models import GlobalInteractor
 from models import LocalEncoder
-from models import customEncoder
+from models import Length_selector_Encoder, Condition_Encoder
 from models import MLPDecoder
 from diffusion_planner.utils.utils import TemporalData
 from copy import deepcopy
 from losses import LaplaceNLLLoss
 from losses import SoftTargetCrossEntropyLoss
 from models.MLP_recon import MLPReconstructor
-
+from diffusion_planner.utils.utils import init_weights
 import torch.nn.functional as F
 import copy
 
@@ -24,6 +24,10 @@ class Traj_Diffusion(nn.Module):
         super().__init__()
 
         
+        # temporal encoder for C , condition in reconstruction module
+        self.diffusion_encoder =  Condition_Encoder(historical_steps=config. historical_steps,embed_dim=config.embed_dim)
+        # separate encoder for Lopt selector
+        self.L_opt_encoder = Length_selector_Encoder(historical_steps=config. historical_steps,embed_dim=config.embed_dim)
 
         self.encoder = HiVT_Encoder(config)
         self.decoder = Diffusion_Planner_Decoder(config)
@@ -39,32 +43,24 @@ class Traj_Diffusion(nn.Module):
         self.device = torch.device(config.device)
         self.reg_loss = LaplaceNLLLoss(reduction='mean')
         self.cls_loss = SoftTargetCrossEntropyLoss(reduction='mean')
-        
-        # separate encoder for training
-        self.diffusion_encoder =  Customized_Encoder(config)
-        
-        # self.gating = gating(embed_dim=config.embed_dim, hidden_size=256)
         # gating module 
         self.gating = LoptDecoder(embed_dim=config.embed_dim)
-
+        # NOTE apply standard initialization
+        self.apply(init_weights)
 
     def set_stage(self, stage: str):
         assert stage in ("recon", "pred", "joint")
         self.stage = stage
-
 
     @property
     def sde(self):
         return self.decoder.decoder.sde
     
     # expect HiVt preprocessed data as input
-    def forward(self, inputs: TemporalData):
+    def forward(self, inputs: TemporalData, current_epoch: int):
+        # random mask first T - H positions, T = maxium historical steps, H = available steps after mask
         if self.random_mask:
             inputs = random_mask_agent_history(inputs, min_keep=2, history_steps=20)
-
-        
-        
-        
 
         ################### rotate preprocess#######################################
         if self.rotate and 'rotate_mat' not in inputs:
@@ -87,22 +83,14 @@ class Traj_Diffusion(nn.Module):
         
         if self.stage == "recon":
             #Lopt select from H to 20
-            inputs_h = inputs['H']
-            # add = torch.stack([torch.randint(1, int(21 - h.item()), (1,), device=inputs_h.device) 
-            #                    if h.item() < 20 else torch.tensor([0], device=inputs_h.device)
-            #                    for h in inputs_h]).squeeze(1)
-            # L_opt = inputs_h + add
-            # inputs["L_opt"] = L_opt
-
-            # mask for recon loss
-
+            inputs_h = inputs['H'] 
             L_opt = inputs["L_opt"]
             mask = generate_displacement_mask(L_opt)
             inputs["L_mask"] = mask
             H_mask = generate_displacement_mask(inputs_h)
             inputs["H_mask"] = H_mask
 
-            local_embedding   = self.diffusion_encoder(inputs) # [N, 20, D], [N, D]
+            local_embedding, _ = self.diffusion_encoder(inputs) # [N, 20, D], [N, D]
             # import pdb; pdb.set_trace()
             
             # reconstruction module
@@ -121,10 +109,7 @@ class Traj_Diffusion(nn.Module):
             #NOTE mask the seen part, for only unseen loss test
             # expand_H_mask = H_mask.unsqueeze(-1)
             # decoder_outputs['gt'] = torch.where(~expand_H_mask, torch.zeros_like(decoder_outputs['gt']), decoder_outputs['gt'])  # mask gt in decoder outputs
-            # decoder_outputs['score'] = torch.where(~expand_H_mask, torch.zeros_like(decoder_outputs['score']), decoder_outputs['score'])  # [B, T, 2] # mask the score by L_opt
-
-            # import pdb; pdb.set_trace()
-            
+            # decoder_outputs['score'] = torch.where(~expand_H_mask, torch.zeros_like(decoder_outputs['score']), decoder_outputs['score'])  # [B, T, 2] # mask the score by L_opt            
             x0 = torch.where(mask, torch.zeros_like(x0), x0)  # [B, T, 2] # mask the x0 by L_opt
             return x0, decoder_outputs
         
@@ -136,80 +121,62 @@ class Traj_Diffusion(nn.Module):
             y_hat, pi = self.pred_decoder(local_embed, global_embed)
             return y_hat, pi
         
-        encoder_outputs, cls_token = self.diffusion_encoder(inputs)
+
+        inputs_h = inputs['H'] 
+        H_mask = generate_displacement_mask(inputs_h)
+        inputs["H_mask"] = H_mask
         
         # gating module to get L_opt and mask for agent
-
-        L_opt, mask = self.gating(encoder_outputs) # [B], [B, T_max]
-        L_opt = L_opt[inputs['agent_index']]  # [B] # get the L_opt for the agent
-        mask = mask[inputs['agent_index']]  # [B, T_max] # get the mask for the agent
-        
+        _ , length_embed = self.L_opt_encoder(inputs)  
+        L_opt, mask , L_opt_logits = self.gating(length_embed, current_epoch) # [B], [B, T_max]
+        ## save L_opt, H, and mask accordingly
         inputs['L_opt'] = L_opt
-        inputs['mask'] = mask
+        inputs['L_mask'] = mask
+        
+
 
         # reconstruction module
+        encoder_outputs,_  = self.diffusion_encoder(inputs)
         decoder_outputs = self.decoder(encoder_outputs, inputs, L_opt)
         x0 = decoder_outputs['x0']  # [B, T, 2]
-        
         x0 = x0.squeeze(1)  # [B, T, 2]
 
-
-        
-        # get gt for recon loss
-        gt = decoder_outputs['gt']  # [B, T, 2]
-
-        
-        # masked_x_gt = mask_x_gt_by_lopt( gt, L_opt)  # [B, T, 2]
-        
-       
+        gt = decoder_outputs['gt']  # [B, T, 2]     
         mask= mask.unsqueeze(-1)  # [B, 20, 1]
-        
-
-
         decoder_outputs['gt'] = torch.where(mask, torch.zeros_like(decoder_outputs['gt']), decoder_outputs['gt'])  # mask gt in decoder outputs
         inputs['x_gt'] = decoder_outputs['gt'] 
         decoder_outputs['score'] = torch.where(mask, torch.zeros_like(decoder_outputs['score']), decoder_outputs['score'])  # [B, T, 2] # mask the score by L_opt
-        
-        # NOTE: debug here , fix the gt with Lopt mask 
-        # import pdb; pdb.set_trace()
         x0 = torch.where(mask, torch.zeros_like(x0), x0)  # [B, T, 2] # mask the x0 by L_opt
-        # recalculate the padding mask and bos mask for reconstructed history
-        # L_opt = L_opt.floor().clamp(min=2, max=20).long()  # [B]
+ 
+        # Recalculate masks for inputs.x, inputs.y, inputs.positions
         inputs = recalculate_masks(inputs, L_opt, history_steps=20) # [B, T_max]
 
-        # 3) Shallow‐copy inputs so we don’t overwrite the original
+        #  Shallow‐copy inputs so we don’t overwrite the original
         inputs2 = copy.copy(inputs)
 
-        # 4) Clone x to preserve grad into x0
+        #  Clone x to preserve grad into x0
         x_clone = inputs.x.clone()
-        # 5) Replace only agent's slice with x0
-        
+
+        # import pdb; pdb.set_trace()
+
+        #  Replace only agent's slice with x0
         x_clone[inputs.agent_index] = x0
         inputs2.x = x_clone
 
-        
-        
         #######################################################################################################
         # NOTE : recaluate the position of the agent, and keep heading 
-        # preserve position[18] [19
+        # preserve position[18] [19]
         recal_his_pos = reconstruct_absolute_position_from_last_frame(x0, inputs2) #[B,20,2]
         inputs2['positions'][inputs2['agent_index'], :20] = recal_his_pos
         ##############################################################################################
 
-        
-        
-        # 6) Re‐encode with reconstructed history for prediction
+   
+        # PREDICTION HEAD
         _, local_embed, global_embed = self.encoder(inputs2)
         y_hat, pi = self.pred_decoder(local_embed=local_embed, global_embed=global_embed)
         
-        # inputs.x[inputs.agent_index] = x0
-
-        # _ , local_embed, global_embed = self.encoder(inputs)
-        # # prediction head
-        # y_hat, pi = self.pred_decoder(local_embed=local_embed, global_embed=global_embed)
-
-
-        return encoder_outputs, decoder_outputs,y_hat, pi, inputs2
+    
+        return encoder_outputs, decoder_outputs,y_hat, pi, inputs2, L_opt_logits
     
     def compute_loss(self, y_hat, pi, inputs: TemporalData):
         reg_mask = ~inputs['padding_mask'][:, 20:]
@@ -393,52 +360,52 @@ class Diffusion_Planner_Decoder(nn.Module):
         return decoder_outputs
 
 
-class Customized_Encoder(nn.Module):
-    def __init__(self, config):
-        super().__init__()
+# class Customized_Encoder(nn.Module):
+#     def __init__(self, config):
+#         super().__init__()
 
-        self.device = torch.device(config.device)
+#         self.device = torch.device(config.device)
 
-        self.historical_steps = config.historical_steps
-        self.future_steps = config.future_steps
-        self.num_modes = config.num_modes
-        self.rotate = config.rotate
-        # self.parallel = config.parallel
-        # self.lr = config.lr
-        # self.weight_decay = config.weight_decay
-        # self.T_max = config.T_max
-        self.local_encoder = customEncoder(historical_steps=config.historical_steps,
-                                          node_dim=config.node_dim,
-                                          edge_dim=config.edge_dim,
-                                          embed_dim=config.embed_dim,
-                                          num_heads=config.num_heads,
-                                          dropout=config.dropout,
-                                          num_temporal_layers=config.num_temporal_layers,
-                                          local_radius=config.local_radius,
-                                          parallel=config.parallel)
-        self.initialize_weights()
+#         self.historical_steps = config.historical_steps
+#         self.future_steps = config.future_steps
+#         self.num_modes = config.num_modes
+#         self.rotate = config.rotate
+#         # self.parallel = config.parallel
+#         # self.lr = config.lr
+#         # self.weight_decay = config.weight_decay
+#         # self.T_max = config.T_max
+#         self.local_encoder = customEncoder(historical_steps=config.historical_steps,
+#                                           node_dim=config.node_dim,
+#                                           edge_dim=config.edge_dim,
+#                                           embed_dim=config.embed_dim,
+#                                           num_heads=config.num_heads,
+#                                           dropout=config.dropout,
+#                                           num_temporal_layers=config.num_temporal_layers,
+#                                           local_radius=config.local_radius,
+#                                           parallel=config.parallel)
+#         self.initialize_weights()
 
-    #initialize weights of the model
-    def initialize_weights(self):
-        # Initialize transformer layers:
-        def _basic_init(m):
-            if isinstance(m, nn.Linear):
-                torch.nn.init.xavier_uniform_(m.weight)
-                if isinstance(m, nn.Linear) and m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.LayerNorm):
-                nn.init.constant_(m.bias, 0)
-                nn.init.constant_(m.weight, 1.0)
-            elif isinstance(m, nn.Embedding):
-                nn.init.normal_(m.weight, mean=0.0, std=0.02)
-        self.apply(_basic_init)
+#     #initialize weights of the model
+#     def initialize_weights(self):
+#         # Initialize transformer layers:
+#         def _basic_init(m):
+#             if isinstance(m, nn.Linear):
+#                 torch.nn.init.xavier_uniform_(m.weight)
+#                 if isinstance(m, nn.Linear) and m.bias is not None:
+#                     nn.init.constant_(m.bias, 0)
+#             elif isinstance(m, nn.LayerNorm):
+#                 nn.init.constant_(m.bias, 0)
+#                 nn.init.constant_(m.weight, 1.0)
+#             elif isinstance(m, nn.Embedding):
+#                 nn.init.normal_(m.weight, mean=0.0, std=0.02)
+#         self.apply(_basic_init)
 
-    def forward(self, data: TemporalData):
-        # NOTE avoid rotate again if already rotated
+#     def forward(self, data: TemporalData):
+#         # NOTE avoid rotate again if already rotated
         
-        local_embed = self.local_encoder(data=data)
-        # print("local_embed shape: ", local_embed.shape)
-        return local_embed
+#         local_embed = self.local_encoder(data=data)
+#         # print("local_embed shape: ", local_embed.shape)
+#         return local_embed
 
 # HiVT hyperparameters
 # @staticmethod

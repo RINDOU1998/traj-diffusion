@@ -125,7 +125,7 @@ def get_args():
                     help="# epochs to train prediction only")
     parser.add_argument('--seed', type=int, help='fix random seed', default=3407)
     parser.add_argument('--train_epochs', type=int, help='epochs of training', default=30)
-    parser.add_argument('--save_utd', type=int, help='save frequency', default=2)
+    parser.add_argument('--save_utd', type=int, help='save frequency', default=8)
     parser.add_argument('--batch_size', type=int, help='batch size (default: 32)', default=32)
     parser.add_argument('--learning_rate', type=float, help='learning rate (default: 5e-4)', default=5e-4)
 
@@ -296,7 +296,7 @@ def model_training(args):
             print(f"[Recon] Epoch {e+1}/{args.recon_epochs}")
 
             # Training
-            train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args)
+            train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args,e+1)
             wandb_logger.log_metrics({f"train_loss/{k}": v for k, v in train_loss.items()}, step=e+1)
             recon_losses.append(train_total_loss)
             
@@ -331,7 +331,7 @@ def model_training(args):
             lr_dict = {'lr': optimizer.param_groups[0]['lr']}
             wandb_logger.log_metrics({f"lr/{k}": v for k, v in lr_dict.items()}, step=e+1)
             print(f"[Pred] Epoch {e+1}/{args.pred_epochs}")
-            train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args)
+            train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args,e+1)
             pred_losses.append(train_total_loss)
             wandb_logger.log_metrics({f"train_loss/{k}": v for k, v in train_loss.items()}, step=e+1)
             val_ade, val_fde, val_mr,val_loss = pred_validation_epoch(diffusion_planner, val_loader, args.device)
@@ -350,7 +350,7 @@ def model_training(args):
 
         if global_rank == 0:
             print(f"Epoch {epoch+1}/{train_epochs}")
-        train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args,  aug)
+        train_loss, train_total_loss = train_epoch(train_loader, diffusion_planner, optimizer, args,epoch + 1,  aug)
         joint_losses.append(train_total_loss)
         print("Train  Loss: ", train_loss)
         
@@ -362,7 +362,7 @@ def model_training(args):
             print({f"train_loss/{k}": v for k, v in train_loss.items()} , "epoch: ", epoch+1)
             print({f"lr/{k}": v for k, v in lr_dict.items()}, "epoch: ", epoch+1)
             # validation
-            val_ade, val_fde, val_mr, val_loss, val_recon_loss, val_seen_recon_loss, val_unseen_recon_loss, recon_loss_matrix = validation_epoch(diffusion_planner, val_loader, args.device)
+            val_ade, val_fde, val_mr, val_loss, val_recon_loss, val_seen_recon_loss, val_unseen_recon_loss, recon_loss_matrix = validation_epoch(diffusion_planner, val_loader, args.device, epoch + 1 )
             wandb_logger.log_metrics({"val/ade": val_ade, "val/fde": val_fde, "val/mr": val_mr, "val/loss": val_loss}, step=epoch+1)
            
             wandb_logger.log_metrics({
@@ -513,6 +513,7 @@ if __name__ == "__main__":
     args = get_args()
 
     if args.do_validation:
-        rec_validation(args)
+        # rec_validation(args)
+        model_validation(args)
     else:
         model_training(args)
